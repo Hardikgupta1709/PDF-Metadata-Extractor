@@ -1,0 +1,4 @@
+grobid-client-python
+lxml
+pandas
+PyMuPDF
