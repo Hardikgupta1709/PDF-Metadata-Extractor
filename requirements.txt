@@ -2,3 +2,4 @@ grobid-client-python
 lxml
 pandas
 PyMuPDF
+gunicorn==21.2.0
