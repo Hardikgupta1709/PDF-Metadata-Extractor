@@ -254,7 +254,7 @@ st.sidebar.title("⚙️ Configuration")
 grobid_server = st.sidebar.text_input(
     "GROBID Server URL",
     value="https://grobid-service.onrender.com",
-    help="GROBID service on Render.com (free tier may take 60s to wake up on first request)"
+    help="GROBID service on Render.com..."
 )
 
 st.sidebar.markdown("---")
