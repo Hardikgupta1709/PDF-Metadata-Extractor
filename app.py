@@ -31,7 +31,7 @@ if 'processing' not in st.session_state:
 st.sidebar.title("Configuration")
 grobid_server = st.sidebar.text_input(
     "GROBID Server URL",
-    value="http://localhost:8070",
+    value="https://grobid-service.onrender.com",
     help="Make sure GROBID is running"
 )
 
