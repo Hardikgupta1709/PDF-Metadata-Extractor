@@ -7,3 +7,6 @@ data/output/*.csv
 .DS_Store
 .vscode/
 *.log
+.streamlit/secrets.toml
+*.json
+client_secret.json
