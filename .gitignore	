@@ -1,4 +1,10 @@
 cat > .gitignore << 'EOF'
+# Secrets - NEVER COMMIT THESE!
+.streamlit/secrets.toml
+*.json
+credentials.json
+service-account.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -9,10 +15,10 @@ venv/
 env/
 ENV/
 
-# Data files
-data/input/*.pdf
-data/output/*.json
-data/output/*.csv
+# Local files
+submitted_papers/
+submissions.csv
+*.pickle
 
 # IDE
 .vscode/
