@@ -2999,4 +2999,20 @@ if uploaded_pdf and uploaded_image:
                     try:
                         append_to_csv(submission_data)
                     except Exception as e:
-                        st.error(f"CSV error: {
+                        st.error(f"CSV error: {str(e)}")
+                    
+                    if GOOGLE_SHEETS_ENABLED:
+                        with st.spinner("📊 Updating Google Sheets..."):
+                            append_to_google_sheets(submission_data)
+                    
+                    st.session_state.show_success = True
+                    st.rerun()
+
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: gray;'>"
+    "🔒 Secure System • Full details stored in Google Drive<br>"
+    "Powered by AI & GROBID"
+    "</div>",
+    unsafe_allow_html=True
+)
