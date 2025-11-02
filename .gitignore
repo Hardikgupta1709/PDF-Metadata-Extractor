@@ -2,6 +2,10 @@
 client_secret.json
 *.pickle
 .streamlit/secrets.toml
+echo "*.json" >> .gitignore
+echo "*.key.json" >> .gitignore
+echo "client_secret.json" >> .gitignore
+echo "service-account*.json" >> .gitignore
 
 # Environment
 .env
