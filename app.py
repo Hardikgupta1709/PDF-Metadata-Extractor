@@ -1,3 +1,12 @@
+# --- Service Account Config (for Render deployment) ---
+USE_SERVICE_ACCOUNT_ON_RENDER = True
+
+# --- Google Services Config ---
+GOOGLE_SHEETS_ENABLED = True
+GOOGLE_DRIVE_ENABLED = True
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")  # Will be set in Render
+
+
 import streamlit as st
 import sys
 import os
