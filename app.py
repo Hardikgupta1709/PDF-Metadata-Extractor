@@ -38,9 +38,9 @@ from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 
 try:
-    from parser.image_extractor import extract_payment_info_from_image, format_payment_details
-    from parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
-    from parser.email_extractor import extract_full_text, find_emails
+    from src.parser.image_extractor  import extract_payment_info_from_image, format_payment_details
+    from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
+    from src.parser.email_extractor import extract_full_text, find_emails
 except ImportError as e:
     st.error(f"**Failed to import local modules!** Details: {e}")
     st.stop()
