@@ -1,16 +1,21 @@
-# Replace the entire .gitignore file
+# Create correct .gitignore
 cat > .gitignore << 'EOF'
-# Credentials & Secrets
+# Credentials & Secrets - TOP PRIORITY
 *.json
+!package.json
+!tsconfig.json
 *.key.json
 client_secret.json
 service-account*.json
 credentials.json
 *-credentials.json
 
-# Streamlit secrets
-.streamlit/secrets.toml
+# OAuth Tokens
+*.pickle
 .streamlit/*.pickle
+.streamlit/secrets.toml
+.streamlit/drive_token.pickle
+.streamlit/google_token.pickle
 
 # Environment
 .env
@@ -28,6 +33,7 @@ __pycache__/
 .pytest_cache/
 venv/
 .venv/
+*.egg-info/
 
 # IDE
 .vscode/
@@ -38,7 +44,4 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
-
-# Dev containers
-.devcontainer/devcontainer.json
 EOF

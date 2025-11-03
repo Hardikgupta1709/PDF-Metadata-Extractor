@@ -19,9 +19,9 @@ print(f"DEBUG: sys.path = {sys.path[:3]}")  # Show first 3 paths
 
 # Now import from src
 try:
-    from parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
-    from parser.email_extractor import extract_full_text, find_emails
-    from utils.file_utils import save_to_json, save_to_csv
+    from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
+    from src.parser.email_extractor import extract_full_text, find_emails
+    from src.utils.file_utils import save_to_json, save_to_csv
     print("DEBUG: All imports successful!")
 except ImportError as e:
     print(f"ERROR: Import failed: {e}")

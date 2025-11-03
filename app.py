@@ -10,8 +10,10 @@ import pickle
 import time
 from typing import Optional
 import pandas as pd
+from config import config
 
 # Set OAuth environment variable
+# Set environment variable for OAuth (must be before any Google imports)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # ----------------- SETUP SYS.PATH -----------------
@@ -53,7 +55,7 @@ OAUTH_PORT = 8502
 OAUTH_REDIRECT_URI = f"http://localhost:{OAUTH_PORT}"
 
 # --- Service Account Config (for Render deployment) ---
-USE_SERVICE_ACCOUNT_ON_RENDER = True
+USE_SERVICE_ACCOUNT_ON_RENDER = True  # Auto-detect Render environment
 
 # Scopes
 SCOPES = [
@@ -74,6 +76,7 @@ SUBMISSIONS_DRIVE_EMAIL = os.getenv("submission_drive_email", "researchsubmissio
 TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
+
 # Sheet ID (from secrets or environment)
 try:
     SHEET_ID = st.secrets.get("google_sheet_id", os.getenv("GOOGLE_SHEET_ID", ""))
