@@ -115,7 +115,12 @@ def is_streamlit_cloud():
 def get_gcp_service_account_credentials():
     """Get service account credentials from environment or secrets"""
     try:
-        # Try environment variables first (for Render)
+        # First try config.py (which loads from .env or environment)
+        from config import config
+        if config.get('service_account_info'):
+            return config['service_account_info']
+        
+        # Try individual GCP environment variables (from Render)
         if os.getenv('GCP_TYPE'):
             return {
                 "type": os.getenv('GCP_TYPE'),
@@ -130,12 +135,14 @@ def get_gcp_service_account_credentials():
                 "client_x509_cert_url": os.getenv('GCP_CLIENT_CERT_URL'),
                 "universe_domain": os.getenv('GCP_UNIVERSE_DOMAIN', 'googleapis.com')
             }
+        
         # Fall back to Streamlit secrets
         elif hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
             return dict(st.secrets["gcp_service_account"])
         else:
             return None
     except Exception as e:
+        st.error(f"Error loading service account: {e}")
         return None
 
 def get_service_account_credentials():
