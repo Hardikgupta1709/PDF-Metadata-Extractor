@@ -2,57 +2,31 @@ import os
 import json
 from dotenv import load_dotenv
 
+# Load .env file (for local development)
 load_dotenv()
 
-# Load service account JSON with error handling
+# Try to load service account JSON (optional for local)
+service_account_info = None
 try:
     service_account_json = os.environ.get("SERVICE_ACCOUNT_JSON")
-    if not service_account_json:
-        raise ValueError("SERVICE_ACCOUNT_JSON environment variable is not set")
-    service_account_info = json.loads(service_account_json)
+    if service_account_json:
+        service_account_info = json.loads(service_account_json)
 except json.JSONDecodeError as e:
-    raise ValueError(f"Invalid JSON in SERVICE_ACCOUNT_JSON: {e}")
-except KeyError:
-    raise ValueError("SERVICE_ACCOUNT_JSON environment variable is missing")
+    print(f"Warning: Invalid JSON in SERVICE_ACCOUNT_JSON: {e}")
+except Exception as e:
+    print(f"Warning: Could not load SERVICE_ACCOUNT_JSON: {e}")
 
-# Load other required environment variables
-required_vars = [
-    "WEB_CLIENT_ID",
-    "WEB_CLIENT_SECRET", 
-    "WEB_AUTH_URI",
-    "WEB_TOKEN_URI",
-    "ADMIN_EMAIL",
-    "GOOGLE_DRIVE_FOLDER_ID",
-    "GOOGLE_SHEET_ID"
-]
-
-missing_vars = [var for var in required_vars if var not in os.environ]
-if missing_vars:
-    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-
-web_client_id = os.environ["WEB_CLIENT_ID"]
-web_client_secret = os.environ["WEB_CLIENT_SECRET"]
-web_auth_uri = os.environ["WEB_AUTH_URI"]
-web_token_uri = os.environ["WEB_TOKEN_URI"]
-admin_email = os.environ["ADMIN_EMAIL"]
-google_drive_folder_id = os.environ["GOOGLE_DRIVE_FOLDER_ID"]
-google_sheet_id = os.environ["GOOGLE_SHEET_ID"]
-
-# Optional settings with defaults
-port = os.environ.get("PORT", "8502")
-headless = os.environ.get("HEADLESS", "true")
-gather_usage_stats = os.environ.get("GATHERUSAGESTATS", "false")
-
+# Load other environment variables (optional)
 config = {
     "service_account_info": service_account_info,
-    "web_client_id": web_client_id,
-    "web_client_secret": web_client_secret,
-    "web_auth_uri": web_auth_uri,
-    "web_token_uri": web_token_uri,
-    "admin_email": admin_email,
-    "google_drive_folder_id": google_drive_folder_id,
-    "google_sheet_id": google_sheet_id,
-    "port": port,
-    "headless": headless,
-    "gather_usage_stats": gather_usage_stats,
+    "web_client_id": os.environ.get("WEB_CLIENT_ID", ""),
+    "web_client_secret": os.environ.get("WEB_CLIENT_SECRET", ""),
+    "web_auth_uri": os.environ.get("WEB_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+    "web_token_uri": os.environ.get("WEB_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+    "admin_email": os.environ.get("ADMIN_EMAIL", ""),
+    "google_drive_folder_id": os.environ.get("GOOGLE_DRIVE_FOLDER_ID", ""),
+    "google_sheet_id": os.environ.get("GOOGLE_SHEET_ID", ""),
+    "port": os.environ.get("PORT", "8502"),
+    "headless": os.environ.get("HEADLESS", "true"),
+    "gather_usage_stats": os.environ.get("GATHERUSAGESTATS", "false"),
 }
