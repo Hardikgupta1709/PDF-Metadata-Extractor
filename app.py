@@ -13,7 +13,6 @@ import pandas as pd
 from config import config
 
 # Set OAuth environment variable
-# Set environment variable for OAuth (must be before any Google imports)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # ----------------- SETUP SYS.PATH -----------------
@@ -49,13 +48,10 @@ ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
 SUBMISSIONS_FOLDER = "submitted_papers"
 SUBMISSIONS_FILE = "submissions.csv"
 
-# --- OAuth Config (for local development) ---
+# --- OAuth Config ---
 CLIENT_SECRET_FILE = "client_secret.json"
 OAUTH_PORT = 8502
 OAUTH_REDIRECT_URI = f"http://localhost:{OAUTH_PORT}"
-
-# --- Service Account Config (for Render deployment) ---
-USE_SERVICE_ACCOUNT_ON_RENDER = True  # Auto-detect Render environment
 
 # Scopes
 SCOPES = [
@@ -70,19 +66,15 @@ GOOGLE_DRIVE_ENABLED = True
 GOOGLE_SHEET_NAME = "Research Paper Submissions"
 GOOGLE_DRIVE_FOLDER = "Research Paper Submissions - Detailed"
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
-SUBMISSIONS_DRIVE_EMAIL = os.getenv("submission_drive_email", "researchsubmissions.trustnet@gmail.com")
 
-# Token settings
+# Token settings - ENHANCED
 TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
-TOKEN_EXPIRY_DAYS = 7
+TOKEN_EXPIRY_DAYS = 7  # 7-day expiry
 
-# Sheet ID (from secrets or environment)
+# Sheet ID
 try:
     SHEET_ID = st.secrets.get("google_sheet_id", os.getenv("GOOGLE_SHEET_ID", ""))
-    if not SHEET_ID:
-        # You can hardcode your Sheet ID here temporarily for testing
-        SHEET_ID = ""  # Replace with your actual Sheet ID
 except:
     SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 
@@ -101,79 +93,107 @@ if "google_creds" not in st.session_state:
     st.session_state.google_creds = None
 if 'payment_details' not in st.session_state:
     st.session_state.payment_details = {}
+if 'token_expiry_date' not in st.session_state:
+    st.session_state.token_expiry_date = None
 
-# ----------------- DETECT ENVIRONMENT -----------------
-def is_render_environment():
-    """Detect if running on Render"""
-    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_NAME") is not None
-
-def is_streamlit_cloud():
-    """Detect if running on Streamlit Cloud"""
-    return os.getenv("STREAMLIT_SHARING_MODE") is not None
-
-# ----------------- GOOGLE AUTHENTICATION -----------------
-def get_gcp_service_account_credentials():
-    """Get service account credentials from environment or secrets"""
-    try:
-        # First try config.py (which loads from .env or environment)
-        from config import config
-        if config.get('service_account_info'):
-            return config['service_account_info']
-        
-        # Try individual GCP environment variables (from Render)
-        if os.getenv('GCP_TYPE'):
-            return {
-                "type": os.getenv('GCP_TYPE'),
-                "project_id": os.getenv('GCP_PROJECT_ID'),
-                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
-                "private_key": os.getenv('GCP_PRIVATE_KEY'),
-                "client_email": os.getenv('GCP_CLIENT_EMAIL'),
-                "client_id": os.getenv('GCP_CLIENT_ID'),
-                "auth_uri": os.getenv('GCP_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
-                "token_uri": os.getenv('GCP_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
-                "auth_provider_x509_cert_url": os.getenv('GCP_AUTH_PROVIDER_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
-                "client_x509_cert_url": os.getenv('GCP_CLIENT_CERT_URL'),
-                "universe_domain": os.getenv('GCP_UNIVERSE_DOMAIN', 'googleapis.com')
-            }
-        
-        # Fall back to Streamlit secrets
-        elif hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            return dict(st.secrets["gcp_service_account"])
-        else:
-            return None
-    except Exception as e:
-        st.error(f"Error loading service account: {e}")
-        return None
-
-def get_service_account_credentials():
-    """Get service account credentials (for Render/production)"""
-    try:
-        creds_dict = get_gcp_service_account_credentials()
-        if not creds_dict:
-            return None
-        
-        creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        return creds
-    except Exception as e:
-        st.error(f"Service account error: {e}")
-        return None
-
+# ----------------- ENHANCED TOKEN MANAGEMENT -----------------
 def save_token(creds):
-    """Saves OAuth credentials to file"""
+    """Saves OAuth credentials with timestamp"""
     os.makedirs(TOKEN_DIR, exist_ok=True)
+    expiry_date = datetime.now() + timedelta(days=TOKEN_EXPIRY_DAYS)
     with open(TOKEN_FILE, "wb") as f:
-        pickle.dump({"creds": creds, "timestamp": datetime.now()}, f)
+        pickle.dump({
+            "creds": creds, 
+            "timestamp": datetime.now(),
+            "expiry_date": expiry_date
+        }, f)
+    st.session_state.token_expiry_date = expiry_date
+    return expiry_date
 
 def load_token():
-    """Loads OAuth credentials from file"""
+    """Loads OAuth credentials and checks expiry"""
     if TOKEN_FILE.exists():
         try:
             with open(TOKEN_FILE, "rb") as f:
                 data = pickle.load(f)
-                return data.get("creds"), data.get("timestamp")
-        except:
-            return None, None
-    return None, None
+                creds = data.get("creds")
+                timestamp = data.get("timestamp")
+                expiry_date = data.get("expiry_date")
+                
+                # Calculate days since creation
+                if timestamp:
+                    days_old = (datetime.now() - timestamp).days
+                    if days_old >= TOKEN_EXPIRY_DAYS:
+                        return None, None, None, "expired"
+                
+                st.session_state.token_expiry_date = expiry_date
+                return creds, timestamp, expiry_date, "valid"
+        except Exception as e:
+            return None, None, None, "error"
+    return None, None, None, "not_found"
+
+def get_token_status():
+    """Get detailed token status for display"""
+    if not TOKEN_FILE.exists():
+        return {
+            "status": "not_connected",
+            "message": "Not connected to Google",
+            "color": "red",
+            "days_left": 0
+        }
+    
+    creds, timestamp, expiry_date, status = load_token()
+    
+    if status == "expired":
+        return {
+            "status": "expired",
+            "message": "Token expired - reconnect required",
+            "color": "red",
+            "days_left": 0
+        }
+    
+    if status == "error" or not creds:
+        return {
+            "status": "error",
+            "message": "Token corrupted - reconnect required",
+            "color": "orange",
+            "days_left": 0
+        }
+    
+    if timestamp:
+        days_old = (datetime.now() - timestamp).days
+        days_left = TOKEN_EXPIRY_DAYS - days_old
+        
+        if days_left <= 0:
+            return {
+                "status": "expired",
+                "message": "Token expired - reconnect required",
+                "color": "red",
+                "days_left": 0
+            }
+        elif days_left <= 2:
+            return {
+                "status": "expiring_soon",
+                "message": f"⚠️ Expires in {days_left} day(s) - reconnect soon",
+                "color": "orange",
+                "days_left": days_left,
+                "expiry_date": expiry_date
+            }
+        else:
+            return {
+                "status": "active",
+                "message": f"✅ Active - {days_left} days remaining",
+                "color": "green",
+                "days_left": days_left,
+                "expiry_date": expiry_date
+            }
+    
+    return {
+        "status": "unknown",
+        "message": "Unknown token state",
+        "color": "gray",
+        "days_left": 0
+    }
 
 def clear_token():
     """Clears OAuth token"""
@@ -184,15 +204,15 @@ def clear_token():
             pass
     if "google_creds" in st.session_state:
         st.session_state.google_creds = None
+    if "token_expiry_date" in st.session_state:
+        st.session_state.token_expiry_date = None
     st.success("🔌 Disconnected from Google")
     time.sleep(1)
     st.rerun()
 
 def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
-    """
-    Get OAuth credentials with 7-day expiry
-    Only used for local development
-    """
+    """Get OAuth credentials with 7-day expiry enforcement"""
+    
     # Check session state first
     if st.session_state.google_creds:
         creds = st.session_state.google_creds
@@ -201,20 +221,25 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
                 creds.refresh(Request())
                 save_token(creds)
                 st.session_state.google_creds = creds
+                return creds
             except:
                 st.session_state.google_creds = None
-        if st.session_state.google_creds:
-            return st.session_state.google_creds
+                if interactive:
+                    st.error("❌ Token refresh failed - reconnection required")
+        else:
+            return creds
 
     # Try loading from file
-    creds, timestamp = load_token()
-    if creds:
-        # Check if older than 7 days
-        if timestamp and (datetime.now() - timestamp).days >= TOKEN_EXPIRY_DAYS:
-            st.warning(f"🔒 Your Google token expired ({TOKEN_EXPIRY_DAYS} days). Please re-authenticate.")
-            clear_token()
-            return None
-        
+    creds, timestamp, expiry_date, status = load_token()
+    
+    if status == "expired":
+        if interactive:
+            st.error(f"🔒 Your Google token expired after {TOKEN_EXPIRY_DAYS} days")
+            st.warning("Please reconnect to continue using Google services")
+        clear_token()
+        return None
+    
+    if status == "valid" and creds:
         try:
             if creds.expired and creds.refresh_token:
                 creds.refresh(Request())
@@ -222,9 +247,11 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
             st.session_state.google_creds = creds
             return creds
         except:
+            if interactive:
+                st.error("❌ Token refresh failed - reconnection required")
             creds = None
 
-    # No valid credentials
+    # No valid credentials - start OAuth flow
     if not interactive:
         return None
     
@@ -237,17 +264,16 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
     try:
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
         creds = flow.run_local_server(port=OAUTH_PORT, prompt="consent", open_browser=True)
-        save_token(creds)
+        expiry_date = save_token(creds)
         st.session_state.google_creds = creds
-        st.success("✅ Connected! Token valid for 7 days.")
-        time.sleep(1)
+        st.success(f"✅ Connected! Token valid until {expiry_date.strftime('%B %d, %Y')}")
+        time.sleep(2)
         st.rerun()
         return creds
     except Exception as e:
         # Manual flow fallback
         st.warning("⚠️ Automatic auth failed. Using manual flow.")
         
-        # Initialize OAuth state in session if not present
         if 'oauth_flow' not in st.session_state:
             try:
                 flow = Flow.from_client_secrets_file(
@@ -260,7 +286,6 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
                     prompt="consent",
                     include_granted_scopes="true"
                 )
-                # Store flow and state in session
                 st.session_state.oauth_flow = flow
                 st.session_state.oauth_state = state
                 st.session_state.oauth_auth_url = auth_url
@@ -299,19 +324,13 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
                 st.error("❌ Invalid URL. Make sure you copied the complete URL.")
                 return None
             
-            if len(auth_response) < 50:
-                st.error("❌ URL too short. Did you paste the complete URL?")
-                return None
-            
             try:
                 with st.spinner("🔄 Connecting to Google..."):
-                    # Use the stored flow from session
                     flow = st.session_state.oauth_flow
                     flow.fetch_token(authorization_response=auth_response)
                     creds = flow.credentials
                     
-                    # Save credentials
-                    save_token(creds)
+                    expiry_date = save_token(creds)
                     st.session_state.google_creds = creds
                     
                     # Clear OAuth session state
@@ -319,44 +338,65 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
                     del st.session_state.oauth_state
                     del st.session_state.oauth_auth_url
                     
-                    st.success("✅ Authorization complete! Token valid for 7 days.")
+                    st.success(f"✅ Authorization complete! Token valid until {expiry_date.strftime('%B %d, %Y')}")
                     time.sleep(2)
                     st.rerun()
                     return creds
             except Exception as e:
                 st.error(f"❌ Connection failed: {str(e)}")
-                st.error("**Troubleshooting:**")
-                st.error("• Make sure you copied the complete URL")
-                st.error("• Try clicking the authorization link again")
-                st.error("• Check that the redirect URI matches in Google Cloud Console")
-                with st.expander("🔍 Technical Details"):
-                    import traceback
-                    st.code(traceback.format_exc())
                 return None
         
         return None
 
+def get_service_account_credentials():
+    """Get service account credentials for Render/production"""
+    try:
+        # Try environment variables
+        if os.getenv('GCP_TYPE'):
+            creds_dict = {
+                "type": os.getenv('GCP_TYPE'),
+                "project_id": os.getenv('GCP_PROJECT_ID'),
+                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
+                "private_key": os.getenv('GCP_PRIVATE_KEY'),
+                "client_email": os.getenv('GCP_CLIENT_EMAIL'),
+                "client_id": os.getenv('GCP_CLIENT_ID'),
+                "auth_uri": os.getenv('GCP_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
+                "token_uri": os.getenv('GCP_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
+                "auth_provider_x509_cert_url": os.getenv('GCP_AUTH_PROVIDER_CERT_URL'),
+                "client_x509_cert_url": os.getenv('GCP_CLIENT_CERT_URL'),
+                "universe_domain": os.getenv('GCP_UNIVERSE_DOMAIN', 'googleapis.com')
+            }
+            return ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        elif hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            return ServiceAccountCredentials.from_service_account_info(
+                dict(st.secrets["gcp_service_account"]), 
+                scopes=SCOPES
+            )
+        return None
+    except Exception as e:
+        return None
+
+def is_render_environment():
+    """Detect if running on Render"""
+    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_NAME") is not None
+
+def is_streamlit_cloud():
+    """Detect if running on Streamlit Cloud"""
+    return os.getenv("STREAMLIT_SHARING_MODE") is not None
+
 def get_google_credentials(interactive: bool = True):
-    """
-    Smart credential getter:
-    - On Render/production: Use service account
-    - On local: Use OAuth (7-day expiry)
-    """
-    # For local development, ALWAYS prefer OAuth
-    if not is_render_environment() and not is_streamlit_cloud():
-        # Force OAuth for local development
-        return get_oauth_credentials(interactive=interactive)
-    
-    # Check if we're on Render or have service account configured
+    """Smart credential getter with 7-day expiry enforcement"""
+    # Check if we're on Render or Streamlit Cloud
     if is_render_environment() or is_streamlit_cloud():
         creds = get_service_account_credentials()
         if creds:
             return creds
         else:
-            st.error("❌ Service account not configured for production deployment")
+            if interactive:
+                st.error("❌ Service account not configured for production")
             return None
     
-    # Fall back to OAuth
+    # Local development - use OAuth with 7-day expiry
     return get_oauth_credentials(interactive=interactive)
 
 # ----------------- GOOGLE API SERVICES -----------------
@@ -419,7 +459,6 @@ def append_to_csv(data):
 # ----------------- DRIVE OPERATIONS -----------------
 def get_or_create_main_drive_folder(drive_service):
     try:
-        # Try folder ID first
         if GOOGLE_DRIVE_FOLDER_ID:
             try:
                 folder = drive_service.files().get(
@@ -430,14 +469,12 @@ def get_or_create_main_drive_folder(drive_service):
             except:
                 pass
         
-        # Search by name
         query = f"name='{GOOGLE_DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = drive_service.files().list(q=query, spaces="drive", fields="files(id, name)", pageSize=1).execute()
         folders = results.get("files", [])
         if folders:
             return folders[0]["id"]
         
-        # Create folder
         metadata = {"name": GOOGLE_DRIVE_FOLDER, "mimeType": "application/vnd.google-apps.folder"}
         created = drive_service.files().create(body=metadata, fields="id").execute()
         return created.get("id")
@@ -463,13 +500,11 @@ def create_drive_folder_for_submission(drive_service, main_folder_id, submission
 def upload_files_to_drive(drive_service, folder_id, pdf_file, image_file):
     file_links = {}
     try:
-        # PDF
         pdf_media = MediaIoBaseUpload(io.BytesIO(pdf_file.getvalue()), mimetype="application/pdf", resumable=True)
         pdf_metadata = {"name": pdf_file.name, "parents": [folder_id]}
         pdf_res = drive_service.files().create(body=pdf_metadata, media_body=pdf_media, fields="id, webViewLink").execute()
         file_links["pdf_link"] = pdf_res.get("webViewLink")
 
-        # Image
         image_mime = image_file.type
         image_media = MediaIoBaseUpload(io.BytesIO(image_file.getvalue()), mimetype=image_mime, resumable=True)
         image_metadata = {"name": image_file.name, "parents": [folder_id]}
@@ -618,11 +653,11 @@ def count_submissions():
 init_csv()
 init_storage()
 
-# ----------------- SIDEBAR -----------------
+# ----------------- SIDEBAR WITH ENHANCED TOKEN STATUS -----------------
 with st.sidebar:
     st.header("🔐 Admin Access")
     if not st.session_state.admin_authenticated:
-        with st.form("admin_login_form"):  # CHANGED: Made key unique
+        with st.form("admin_login_form"):
             pin_input = st.text_input("Enter PIN", type="password")
             if st.form_submit_button("🔓 Unlock"):
                 if pin_input == ADMIN_PIN:
@@ -641,496 +676,310 @@ with st.sidebar:
         st.markdown("---")
         st.subheader("☁️ Google Connection")
         
-        # Detect environment
+        # ENHANCED: Show detailed token status
         if is_render_environment():
             st.info("🚀 Running on Render (Service Account)")
             creds = get_service_account_credentials()
             if creds:
-                st.success("✅ Service Account Connected")
-                try:
-                    sa_email = get_gcp_service_account_credentials().get("client_email")
-                    st.caption(f"SA: {sa_email}")
-                except:
-                    pass
+                st.success("✅ Service Account Active")
             else:
                 st.error("❌ Service Account Not Configured")
-                st.caption("Set environment variables in Render")
         else:
-            st.info("💻 Running Locally (OAuth)")
+            st.info("💻 Local Development (OAuth)")
             
-            # Try to load existing token silently
-            creds, ts = load_token()
-            if creds and not creds.expired:
-                st.session_state.google_creds = creds
+            # Get token status
+            token_status = get_token_status()
             
-            if st.session_state.google_creds:
-                st.success("✅ OAuth Connected")
-                if creds and creds.expiry:
-                    try:
-                        days_left = (creds.expiry.replace(tzinfo=None) - datetime.now()).days
-                        st.caption(f"Token expires in {days_left} days")
-                    except:
-                        st.caption("Token valid")
+            # Display status with color coding
+            if token_status["status"] == "active":
+                st.success(token_status["message"])
+                if token_status.get("expiry_date"):
+                    st.caption(f"Valid until: {token_status['expiry_date'].strftime('%B %d, %Y at %I:%M %p')}")
+                
+                # Show progress bar for days remaining
+                progress = token_status["days_left"] / TOKEN_EXPIRY_DAYS
+                st.progress(progress)
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("🔌 Disconnect", use_container_width=True, key="disconnect_btn"):
+                    if st.button("🔌 Disconnect", use_container_width=True):
                         clear_token()
                 with col2:
-                    if st.button("🔄 Refresh", use_container_width=True, key="refresh_btn"):
+                    if st.button("🔄 Refresh", use_container_width=True):
                         st.rerun()
-            else:
-                st.warning("⚠️ Not Connected")
-                if st.button("🔗 Connect with Google", use_container_width=True, type="primary", key="connect_btn"):
-                    # Set a flag to show the OAuth UI
+                        
+            elif token_status["status"] == "expiring_soon":
+                st.warning(token_status["message"])
+                if token_status.get("expiry_date"):
+                    st.caption(f"Expires: {token_status['expiry_date'].strftime('%B %d, %Y at %I:%M %p')}")
+                
+                # Show progress bar
+                progress = token_status["days_left"] / TOKEN_EXPIRY_DAYS
+                st.progress(progress)
+                
+                st.info("💡 Reconnect now to avoid interruption")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔄 Reconnect Now", type="primary", use_container_width=True):
+                        clear_token()
+                        st.session_state.show_oauth_ui = True
+                        st.rerun()
+                with col2:
+                    if st.button("🔌 Disconnect", use_container_width=True):
+                        clear_token()
+                        
+            elif token_status["status"] in ["expired", "error"]:
+                st.error(token_status["message"])
+                if st.button("🔗 Connect to Google", type="primary", use_container_width=True):
                     st.session_state.show_oauth_ui = True
                     st.rerun()
-
-        st.markdown("---")
-        st.subheader("📊 Dashboard")
-        st.metric("Total Submissions", count_submissions())
+                    
+            else:  # not_connected
+                st.info("Not connected to Google Services")
+                if st.button("🔗 Connect to Google", type="primary", use_container_width=True):
+                    st.session_state.show_oauth_ui = True
+                    st.rerun()
         
-        if st.button("📋 View All", key="view_all_btn"):
-            if os.path.exists(SUBMISSIONS_FILE):
-                try:
-                    df = pd.read_csv(SUBMISSIONS_FILE)
-                    if len(df) > 0:
-                        st.success(f"✅ Found {len(df)} submission(s)")
-                        st.dataframe(df, use_container_width=True, height=400)
-                        csv_data = df.to_csv(index=False).encode("utf-8")
-                        st.download_button(
-                            "⬇️ Download CSV",
-                            csv_data,
-                            f"submissions_{datetime.now().strftime('%Y%m%d')}.csv",
-                            "text/csv",
-                            key="download_csv_btn"
-                        )
-                    else:
-                        st.info("📋 CSV file exists but is empty")
-                except Exception as e:
-                    st.error(f"❌ Error reading CSV: {e}")
-                    st.info(f"📁 Looking for: {SUBMISSIONS_FILE}")
-            else:
-                st.warning(f"❌ CSV file not found at: {SUBMISSIONS_FILE}")
-                st.info("💡 Submit a paper to create the database")
-        
-        # View Latest Submission
-        if st.button("📄 View Latest", key="view_latest_btn"):
-            if os.path.exists(SUBMISSIONS_FILE):
-                try:
-                    df = pd.read_csv(SUBMISSIONS_FILE)
-                    if len(df) > 0:
-                        latest = df.iloc[-1]
-                        st.success("📄 Latest Submission")
-                        
-                        # Display in organized sections
-                        st.markdown("**📋 Basic Info**")
-                        st.text(f"ID: {latest.get('Submission ID', 'N/A')}")
-                        st.text(f"Date: {latest.get('Timestamp', 'N/A')}")
-                        st.text(f"Title: {latest.get('Paper Title', 'N/A')}")
-                        
-                        st.markdown("**👥 Authors**")
-                        st.text(f"Authors: {latest.get('Authors', 'N/A')}")
-                        st.text(f"Email: {latest.get('Email', 'N/A')}")
-                        
-                        st.markdown("**💳 Payment**")
-                        st.text(f"Transaction ID: {latest.get('Transaction ID', 'N/A')}")
-                        st.text(f"Amount: ₹{latest.get('Amount', 'N/A')}")
-                        
-                        st.markdown("**🔗 Links**")
-                        if latest.get('Drive Folder Link') and latest.get('Drive Folder Link') != 'N/A':
-                            st.markdown(f"[📁 Open Drive Folder]({latest['Drive Folder Link']})")
-                        if latest.get('Drive Document Link') and latest.get('Drive Document Link') != 'N/A':
-                            st.markdown(f"[📄 Open Details Doc]({latest['Drive Document Link']})")
-                    else:
-                        st.info("No submissions yet")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-            else:
-                st.info("No submissions yet")
-
         st.markdown("---")
-        st.subheader("⚙️ Settings")
-        st.session_state.grobid_server = st.text_input(
-            "GROBID Server",
-            value=st.session_state.grobid_server
+        st.subheader("📊 Statistics")
+        total = count_submissions()
+        st.metric("Total Submissions", total)
+        
+        st.markdown("---")
+        st.subheader("⚙️ GROBID Server")
+        grobid_input = st.text_input(
+            "Server URL",
+            value=st.session_state.grobid_server,
+            help="Default: https://kermitt2-grobid.hf.space"
         )
+        if st.button("Update GROBID"):
+            st.session_state.grobid_server = grobid_input
+            st.success("✅ Updated!")
 
-# ----------------- MAIN UI -----------------
-st.title("📝 Research Paper Submission")
-st.markdown("Upload your paper and payment receipt")
-
-# Show OAuth UI if connection was requested
-if 'show_oauth_ui' not in st.session_state:
-    st.session_state.show_oauth_ui = False
-
-if st.session_state.show_oauth_ui and not st.session_state.google_creds:
-    st.markdown("---")
-    get_oauth_credentials(interactive=True)
-    if st.button("❌ Cancel Authorization", key="cancel_oauth"):
+# ----------------- OAUTH UI HANDLER -----------------
+if st.session_state.admin_authenticated and st.session_state.get('show_oauth_ui', False):
+    st.title("🔐 Google OAuth Connection")
+    st.info("Follow the steps below to connect your Google account")
+    
+    creds = get_oauth_credentials(interactive=True)
+    if creds:
         st.session_state.show_oauth_ui = False
-        # Clean up OAuth session state
-        if 'oauth_flow' in st.session_state:
-            del st.session_state.oauth_flow
-        if 'oauth_state' in st.session_state:
-            del st.session_state.oauth_state
-        if 'oauth_auth_url' in st.session_state:
-            del st.session_state.oauth_auth_url
+        st.rerun()
+    
+    if st.button("❌ Cancel"):
+        st.session_state.show_oauth_ui = False
         st.rerun()
     st.stop()
 
-if st.session_state.show_success:
-    st.success("🎉 **Submission successful!**")
-    st.info("✅ All details saved. Admin will review shortly.")
-    if st.button("➕ Submit Another"):
-        st.session_state.show_success = False
-        st.session_state.metadata = None
-        st.session_state.extracted = False
-        st.session_state.payment_details = {}
-        st.rerun()
+# ----------------- MAIN APP -----------------
+st.title("📄 Research Paper Submission Portal")
+
+# Check authentication
+if not st.session_state.admin_authenticated:
+    st.warning("🔒 Please authenticate via Admin Panel (sidebar) to access the submission form")
     st.stop()
+
+# Check Google connection
+creds = get_google_credentials(interactive=False)
+if not creds:
+    st.error("❌ Google Services not connected!")
+    st.warning("Please connect to Google via the Admin Panel in the sidebar")
+    st.info("💡 Click 'Connect to Google' in the sidebar to authenticate")
+    st.stop()
+
+# Show connection status at top
+token_status = get_token_status()
+if token_status["status"] == "expiring_soon":
+    st.warning(f"⚠️ {token_status['message']} - Please reconnect via Admin Panel")
+elif token_status["status"] == "active":
+    st.success(f"✅ Google Connected - {token_status['days_left']} days remaining")
 
 st.markdown("---")
-st.subheader("📤 Step 1: Upload Files")
 
+# File uploaders
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("#### 📄 Research Paper")
-    uploaded_pdf = st.file_uploader("Upload PDF *", type=['pdf'], key="pdf")
-
+    pdf_file = st.file_uploader("📑 Upload Research Paper (PDF)", type=["pdf"])
 with col2:
-    st.markdown("#### 🧾 Transaction Receipt")
-    uploaded_image = st.file_uploader("Upload receipt *", type=['jpg','jpeg','png','pdf'], key="img")
+    image_file = st.file_uploader("🧾 Upload Payment Receipt", type=["png", "jpg", "jpeg"])
 
-# Show file upload status
-if uploaded_pdf:
-    col1.success(f"✅ {uploaded_pdf.name}")
-
-if uploaded_image:
-    col2.success(f"✅ {uploaded_image.name}")
-    if uploaded_image.type.startswith("image"):
-        col2.image(uploaded_image, width=200)
-
-# EXTRACTION LOGIC AFTER UPLOAD
-if uploaded_pdf and uploaded_image:
-    st.markdown("---")
-    st.subheader("🔍 Step 2: Extract Information")
-    
-    col_extract1, col_extract2 = st.columns(2)
-    
-    # PDF Metadata Extraction
-    with col_extract1:
-        st.markdown("##### 📄 Extract Paper Metadata")
-        if st.button("🤖 Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-                tmp.write(uploaded_pdf.getvalue())
-                tmp_path = tmp.name
-            
+# Extraction button
+if pdf_file and not st.session_state.extracted:
+    if st.button("🔍 Extract Metadata from PDF", type="primary"):
+        with st.spinner("Processing PDF with GROBID..."):
             try:
-                with st.spinner("🔄 Extracting metadata from PDF..."):
-                    tei_xml = parse_pdf_with_grobid(tmp_path, st.session_state.grobid_server)
-                    if not tei_xml:
-                        raise ValueError("GROBID returned empty response. Server might be down.")
-                    
+                tei_xml = parse_pdf_with_grobid(pdf_file, st.session_state.grobid_server)
+                if tei_xml:
                     metadata = extract_metadata_from_tei(tei_xml)
-                    metadata['affiliations'] = extract_affiliations_from_tei(tei_xml)
-                    metadata['emails'] = find_emails(extract_full_text(tmp_path))
+                    metadata["affiliations"] = "; ".join(extract_affiliations_from_tei(tei_xml))
+                    
+                    # Extract emails
+                    full_text = extract_full_text(tei_xml)
+                    emails = find_emails(full_text)
+                    metadata["corresponding_email"] = emails[0] if emails else ""
                     
                     st.session_state.metadata = metadata
                     st.session_state.extracted = True
-                    st.success("✅ PDF metadata extracted!")
+                    st.success("✅ Metadata extracted!")
                     st.rerun()
-            except Exception as e:
-                st.error(f"❌ Extraction failed: {e}")
-                st.info("💡 You can fill the form manually")
-                # Initialize empty metadata to prevent errors
-                if not st.session_state.metadata:
-                    st.session_state.metadata = {
-                        'title': '',
-                        'authors': [],
-                        'abstract': '',
-                        'keywords': [],
-                        'affiliations': [],
-                        'emails': []
-                    }
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-    
-    # Payment Details Extraction
-    with col_extract2:
-        st.markdown("##### 💳 Extract Payment Details")
-        if st.button("🔍 Extract from Receipt", type="primary", use_container_width=True, key="extract_payment"):
-            try:
-                with st.spinner("🔄 Extracting payment info..."):
-                    uploaded_image.seek(0)
-                    payment_details = extract_payment_info_from_image(
-                        uploaded_image,
-                        use_tesseract=True,
-                        use_easyocr=False
-                    )
-                    st.session_state.payment_details = payment_details
-                    
-                    if payment_details.get("transaction_id"):
-                        st.success("✅ Payment details extracted!")
-                        st.info(format_payment_details(payment_details))
-                    else:
-                        st.warning("⚠️ Could not extract all details.")
-                        if payment_details.get("raw_text"):
-                            with st.expander("🔍 View Extracted Text"):
-                                st.text(payment_details["raw_text"])
-            except Exception as e:
-                st.error(f"❌ Extraction failed: {e}")
-                st.info("💡 You can enter payment details manually")
-    
-    # Show extraction status
-    if st.session_state.extracted or st.session_state.payment_details:
-        st.markdown("---")
-        status_col1, status_col2 = st.columns(2)
-        with status_col1:
-            if st.session_state.extracted:
-                st.success("✅ PDF metadata extracted")
-            else:
-                st.info("⏭️ PDF extraction pending (optional)")
-        with status_col2:
-            if st.session_state.payment_details.get("transaction_id"):
-                st.success("✅ Payment details extracted")
-            else:
-                st.info("⏭️ Payment extraction pending (optional)")
-
-    # FORM SECTION
-    st.markdown("---")
-    st.subheader("📝 Step 3: Complete Submission Form")
-    
-    if st.session_state.extracted:
-        st.info("✅ Form auto-filled! Please review and complete all fields.")
-    else:
-        st.info("💡 Fill out the form manually or use auto-extraction above")
-    
-    # Ensure metadata and payment_details are dictionaries, not None
-    metadata = st.session_state.get('metadata') or {}
-    payment_details = st.session_state.get('payment_details') or {}
-
-    with st.form("submission_form", clear_on_submit=False):
-        st.markdown("#### 📄 Paper Details")
-        title = st.text_input("Title *", value=metadata.get('title', ''))
-        authors = st.text_area(
-            "Authors (semicolon separated) *", 
-            value="; ".join(metadata.get('authors', [])) if metadata.get('authors') else '', 
-            height=80
-        )
-
-        st.markdown("#### 📧 Contact Information")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            emails_list = metadata.get('emails', [])
-            default_email = emails_list[0] if emails_list else ""
-            email = st.text_input("Corresponding Email *", value=default_email)
-        with col_c2:
-            all_emails_display = "; ".join(emails_list) if emails_list else ""
-            all_emails = st.text_area("All Found Emails", value=all_emails_display, height=80, disabled=True)
-
-        affiliations = st.text_area(
-            "Affiliations (semicolon separated) *", 
-            value="; ".join(metadata.get('affiliations', [])) if metadata.get('affiliations') else '', 
-            height=80
-        )
-
-        st.markdown("#### 💳 Payment Information")
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            transaction_id = st.text_input("Transaction ID *", value=payment_details.get('transaction_id', ''))
-            amount = st.text_input("Amount Paid (₹) *", value=payment_details.get('amount', ''))
-        with col_t2:
-            payment_method = st.text_input(
-                "Payment Method", 
-                value=payment_details.get('payment_method', ''), 
-                placeholder="UPI/Card/Net Banking"
-            )
-            payment_date = st.text_input(
-                "Payment Date", 
-                value=payment_details.get('date', ''), 
-                placeholder="DD-MM-YYYY"
-            )
-        
-        upi_id = st.text_input("UPI ID (if applicable)", value=payment_details.get('upi_id', ''))
-
-        st.markdown("#### 📖 Abstract & Keywords")
-        abstract = st.text_area("Abstract *", value=metadata.get('abstract', ''), height=150)
-        keywords = st.text_input(
-            "Keywords (comma separated) *", 
-            value=", ".join(metadata.get('keywords', [])) if metadata.get('keywords') else ''
-        )
-
-        st.markdown("#### 🏷️ Classification")
-        col_cl1, col_cl2 = st.columns(2)
-        with col_cl1:
-            area = st.selectbox(
-                "Research Area *", 
-                [
-                    "Select...", 
-                    "Computer Science", 
-                    "Artificial Intelligence", 
-                    "Machine Learning", 
-                    "Data Science", 
-                    "Physics", 
-                    "Chemistry", 
-                    "Biology", 
-                    "Mathematics", 
-                    "Engineering", 
-                    "Medicine", 
-                    "Other"
-                ]
-            )
-        with col_cl2:
-            sub_type = st.selectbox(
-                "Submission Type *", 
-                [
-                    "Select...", 
-                    "Full Paper", 
-                    "Short Paper", 
-                    "Poster", 
-                    "Extended Abstract", 
-                    "Review", 
-                    "Case Study"
-                ]
-            )
-
-        comments = st.text_area("Additional Comments (optional)", height=80)
-        
-        st.markdown("---")
-        consent = st.checkbox("✅ I confirm all information is accurate and I have the right to submit this work *")
-        
-        # Submit button
-        st.markdown("")
-        col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
-        with col_submit2:
-            submitted = st.form_submit_button("🚀 **SUBMIT PAPER**", type="primary", use_container_width=True)
-
-        if submitted:
-            # Validation
-            errors = []
-            if not title or not title.strip(): 
-                errors.append("Title")
-            if not authors or not authors.strip(): 
-                errors.append("Authors")
-            if not email or not email.strip() or '@' not in email: 
-                errors.append("Valid Email")
-            if not affiliations or not affiliations.strip(): 
-                errors.append("Affiliations")
-            if not abstract or not abstract.strip(): 
-                errors.append("Abstract")
-            if not keywords or not keywords.strip(): 
-                errors.append("Keywords")
-            if area == "Select...": 
-                errors.append("Research Area")
-            if sub_type == "Select...": 
-                errors.append("Submission Type")
-            if not transaction_id or not transaction_id.strip(): 
-                errors.append("Transaction ID")
-            if not amount or not amount.strip(): 
-                errors.append("Amount")
-            if not consent: 
-                errors.append("Consent checkbox")
-
-            if errors:
-                st.error(f"❌ **Please complete the following required fields:** {', '.join(errors)}")
-            else:
-                # Process submission
-                submission_id = f"SUB{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                
-                # Helper function to safely strip strings
-                def safe_strip(value):
-                    return value.strip() if value else ""
-                
-                submission_data = {
-                    'submission_id': submission_id,
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'title': safe_strip(title),
-                    'authors': safe_strip(authors),
-                    'corresponding_email': safe_strip(email),
-                    'all_emails': all_emails_display or "",
-                    'affiliations': safe_strip(affiliations),
-                    'abstract': safe_strip(abstract),
-                    'keywords': safe_strip(keywords),
-                    'research_area': area,
-                    'submission_type': sub_type,
-                    'comments': safe_strip(comments),
-                    'pdf_filename': uploaded_pdf.name,
-                    'image_filename': uploaded_image.name,
-                    'transaction_id': safe_strip(transaction_id),
-                    'amount': safe_strip(amount),
-                    'payment_method': safe_strip(payment_method),
-                    'payment_date': safe_strip(payment_date),
-                    'upi_id': safe_strip(upi_id)
-                }
-
-                # Save locally
-                with st.spinner("💾 Saving files locally..."):
-                    local_data = save_files_locally(uploaded_pdf, uploaded_image, submission_id, authors.strip())
-
-                if local_data:
-                    submission_data.update({
-                        'pdf_path': local_data['pdf_path'],
-                        'image_path': local_data['image_path']
-                    })
-                    st.success("✅ Files saved locally")
                 else:
-                    st.error("❌ Could not save files locally")
-                    st.stop()
-                
-                # Upload to Drive & Sheets (if connected)
-                google_creds = get_google_credentials(interactive=False)
-                if GOOGLE_DRIVE_ENABLED and google_creds:
-                    with st.spinner("☁️ Uploading to Google Drive & Sheets..."):
-                        drive_data = upload_complete_submission(
-                            google_creds, uploaded_pdf, uploaded_image, submission_data
-                        )
-                        if drive_data:
-                            submission_data.update({
-                                'drive_doc_link': drive_data.get('doc_link'),
-                                'drive_folder_link': drive_data.get('folder_link')
-                            })
-                            st.success("✅ Uploaded to Google Drive & Sheets!")
-                        else:
-                            st.warning("⚠️ Drive upload failed. Files saved locally.")
-                elif GOOGLE_DRIVE_ENABLED:
-                    st.warning("⚠️ Google not connected. Files saved locally only.")
-                    st.info("💡 Admin can connect Google Drive from the sidebar")
+                    st.error("Failed to extract metadata")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-                # Append to local CSV
-                try:
-                    append_to_csv(submission_data)
-                    st.success("✅ Logged to local CSV")
-                except Exception as e:
-                    st.error(f"❌ CSV logging error: {e}")
+# Payment extraction
+if image_file and not st.session_state.payment_details:
+    if st.button("💳 Extract Payment Details", type="secondary"):
+        with st.spinner("Processing payment receipt..."):
+            try:
+                payment_info = extract_payment_info_from_image(image_file)
+                if payment_info:
+                    st.session_state.payment_details = payment_info
+                    st.success("✅ Payment details extracted!")
+                    st.rerun()
+                else:
+                    st.warning("Could not extract payment details automatically")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-                # Mark as successful
-                st.session_state.show_success = True
-                st.rerun()
+# Display extracted payment details
+if st.session_state.payment_details:
+    with st.expander("💳 Extracted Payment Details", expanded=True):
+        formatted = format_payment_details(st.session_state.payment_details)
+        st.markdown(formatted)
 
-else:
-    # Show instructions when no files uploaded
-    st.info("👆 Please upload both your research paper (PDF) and transaction receipt to begin")
-    
-    with st.expander("📋 Submission Requirements"):
-        st.markdown("""
-        **Required Documents:**
-        - ✅ Research paper in PDF format
-        - ✅ Payment receipt (screenshot or PDF)
-        
-        **Required Information:**
-        - Paper title, authors, and affiliations
-        - Corresponding author's email
-        - Abstract and keywords
-        - Research area and paper type
-        - Transaction ID and payment amount
-        
-        **Optional Features:**
-        - 🤖 Auto-extract metadata from PDF using GROBID
-        - 🔍 Auto-extract payment details from receipt
-        - ☁️ Automatic upload to Google Drive (if admin configured)
-        """)
-
+# Submission form
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: gray;'>Developed by SDC - Hardik Gupta</div>", unsafe_allow_html=True)
+st.subheader("📝 Submission Form")
+
+with st.form("submission_form"):
+    meta = st.session_state.metadata or {}
+    payment = st.session_state.payment_details or {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        title = st.text_input("Paper Title*", value=meta.get("title", ""))
+        authors = st.text_area("Authors*", value=meta.get("authors", ""), 
+                               help="Separate multiple authors with semicolons")
+        email = st.text_input("Corresponding Email*", value=meta.get("corresponding_email", ""))
+        affiliations = st.text_area("Affiliations", value=meta.get("affiliations", ""))
+    
+    with col2:
+        research_area = st.selectbox("Research Area*", [
+            "Computer Science", "Engineering", "Medicine", 
+            "Physics", "Chemistry", "Biology", "Mathematics", "Other"
+        ])
+        submission_type = st.selectbox("Submission Type*", [
+            "Full Paper", "Short Paper", "Poster", "Workshop"
+        ])
+        abstract = st.text_area("Abstract", value=meta.get("abstract", ""), height=100)
+        keywords = st.text_input("Keywords", value=meta.get("keywords", ""))
+    
+    st.markdown("#### 💰 Payment Information")
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        transaction_id = st.text_input("Transaction ID*", value=payment.get("transaction_id", ""))
+        amount = st.text_input("Amount (₹)*", value=payment.get("amount", ""))
+    with col4:
+        payment_method = st.text_input("Payment Method*", value=payment.get("payment_method", ""))
+        payment_date = st.text_input("Payment Date", value=payment.get("payment_date", ""))
+        upi_id = st.text_input("UPI ID", value=payment.get("upi_id", ""))
+    
+    submit = st.form_submit_button("🚀 Submit Paper", type="primary", use_container_width=True)
+    
+    if submit:
+        # Validation
+        if not all([pdf_file, image_file, title, authors, email, transaction_id, amount, payment_method]):
+            st.error("❌ Please fill all required fields (*) and upload both files")
+        else:
+            # Check Google connection before submission
+            creds = get_google_credentials(interactive=False)
+            if not creds:
+                st.error("❌ Google connection lost! Please reconnect via Admin Panel")
+                st.stop()
+            
+            with st.spinner("📤 Submitting your paper..."):
+                try:
+                    # Generate submission ID
+                    submission_id = f"SUB{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    
+                    # Prepare submission data
+                    submission_data = {
+                        "submission_id": submission_id,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "title": title,
+                        "authors": authors,
+                        "corresponding_email": email,
+                        "affiliations": affiliations,
+                        "research_area": research_area,
+                        "submission_type": submission_type,
+                        "abstract": abstract,
+                        "keywords": keywords,
+                        "transaction_id": transaction_id,
+                        "amount": amount,
+                        "payment_method": payment_method,
+                        "payment_date": payment_date,
+                        "upi_id": upi_id
+                    }
+                    
+                    # Save locally
+                    local_paths = save_files_locally(pdf_file, image_file, submission_id, authors)
+                    if local_paths:
+                        submission_data.update(local_paths)
+                    
+                    # Upload to Google
+                    drive_result = upload_complete_submission(creds, pdf_file, image_file, submission_data)
+                    
+                    if drive_result:
+                        submission_data["drive_doc_link"] = drive_result.get("doc_link", "")
+                        submission_data["drive_folder_link"] = drive_result.get("folder_link", "")
+                    
+                    # Save to CSV
+                    append_to_csv(submission_data)
+                    
+                    # Show success
+                    st.session_state.show_success = True
+                    st.session_state.last_submission = submission_data
+                    st.session_state.last_drive_result = drive_result
+                    
+                    # Clear form
+                    st.session_state.metadata = None
+                    st.session_state.extracted = False
+                    st.session_state.payment_details = {}
+                    
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Submission failed: {e}")
+
+# Success message
+if st.session_state.show_success:
+    st.success("🎉 Paper submitted successfully!")
+    
+    sub_data = st.session_state.last_submission
+    drive_res = st.session_state.last_drive_result
+    
+    st.info(f"**Submission ID:** {sub_data['submission_id']}")
+    
+    if drive_res:
+        st.markdown("### 📁 Your Submission Links")
+        col1, col2 = st.columns(2)
+        with col1:
+            if drive_res.get("folder_link"):
+                st.markdown(f"[📂 View Folder]({drive_res['folder_link']})")
+        with col2:
+            if drive_res.get("doc_link"):
+                st.markdown(f"[📄 View Details]({drive_res['doc_link']})")
+    
+    if st.button("✅ Submit Another Paper"):
+        st.session_state.show_success = False
+        st.session_state.last_submission = None
+        st.session_state.last_drive_result = None
+        st.rerun()
+
+# Footer
+st.markdown("---")
+st.caption("🔒 Secure submission portal with 7-day Google OAuth renewal")
