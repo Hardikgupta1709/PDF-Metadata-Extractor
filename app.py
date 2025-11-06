@@ -58,16 +58,17 @@ st.set_page_config(page_title="Research Paper Submission", page_icon="📄", lay
 
 # --- Main Config ---
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")  # From your Render env
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
 SUBMISSIONS_FOLDER = "submitted_papers"
 SUBMISSIONS_FILE = "submissions.csv"
 
 # --- OAuth Config from Render Environment Variables ---
-# OAuth credentials for production (Render)
+# CRITICAL: Check which variable naming you're using in Render
+# Option 1: If using OAUTH_* prefix in Render
 OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN", "")
-OAUTH_CLIENT_ID = os.getenv("WEB_CLIENT_ID", "")  # Using WEB_CLIENT_ID from your env
-OAUTH_CLIENT_SECRET = os.getenv("WEB_CLIENT_SECRET", "")  # Using WEB_CLIENT_SECRET from your env
-OAUTH_TOKEN_URI = os.getenv("WEB_TOKEN_URI", "https://oauth2.googleapis.com/token")  # Using WEB_TOKEN_URI
+OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "") or os.getenv("WEB_CLIENT_ID", "")
+OAUTH_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET", "") or os.getenv("WEB_CLIENT_SECRET", "")
+OAUTH_TOKEN_URI = os.getenv("OAUTH_TOKEN_URI", "") or os.getenv("WEB_TOKEN_URI", "https://oauth2.googleapis.com/token")
 
 # Local development OAuth config
 CLIENT_SECRET_FILE = "client_secret.json"
@@ -91,24 +92,13 @@ GOOGLE_DRIVE_FOLDER = "Research Paper Submissions - Detailed"
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 
-# GCP Configuration from Render environment
+# GCP Configuration (if using service account instead)
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
 GCP_PRIVATE_KEY = os.getenv("GCP_PRIVATE_KEY", "")
-GCP_PRIVATE_KEY_ID = os.getenv("GCP_PRIVATE_KEY_ID", "")
 GCP_CLIENT_EMAIL = os.getenv("GCP_CLIENT_EMAIL", "")
-GCP_CLIENT_ID = os.getenv("GCP_CLIENT_ID", "")
-GCP_CLIENT_CERT_URL = os.getenv("GCP_CLIENT_CERT_URL", "")
-GCP_AUTH_URI = os.getenv("GCP_AUTH_URI", "https://accounts.google.com/o/oauth2/auth")
-GCP_AUTH_PROVIDER_CERT_URL = os.getenv("GCP_AUTH_PROVIDER_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs")
-GCP_TOKEN_URI = os.getenv("GCP_TOKEN_URI", "https://oauth2.googleapis.com/token")
-GCP_TYPE = os.getenv("GCP_TYPE", "service_account")
-GCP_UNIVERSE_DOMAIN = os.getenv("GCP_UNIVERSE_DOMAIN", "googleapis.com")
 
-# Email Configuration from Render environment
+# Email Configuration
 SUBMISSION_DRIVE_EMAIL = os.getenv("SUBMISSION_DRIVE_EMAIL", "")
-
-# Gathering Stats Configuration
-GATHERINGSTATS = os.getenv("GATHERINGSTATS", "")
 
 # Headless mode configuration
 HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
@@ -118,7 +108,7 @@ TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
 
-# ----------------- SESSION STATE INIT (Must be before any st.session_state access) -----------------
+# ----------------- SESSION STATE INIT -----------------
 if 'metadata' not in st.session_state:
     st.session_state.metadata = None
 if 'extracted' not in st.session_state:
@@ -137,13 +127,14 @@ if 'token_expiry_date' not in st.session_state:
     st.session_state.token_expiry_date = None
 if 'show_oauth_ui' not in st.session_state:
     st.session_state.show_oauth_ui = False
+if 'oauth_error' not in st.session_state:
+    st.session_state.oauth_error = None
 
 # ----------------- OAUTH CREDENTIALS (WORKS EVERYWHERE) -----------------
 def get_credentials_from_refresh_token():
     """
     Get credentials from refresh token stored in environment variables.
     This works on Render/production without expiry issues.
-    Uses WEB_* environment variables from Render.
     """
     try:
         refresh_token = OAUTH_REFRESH_TOKEN
@@ -151,11 +142,25 @@ def get_credentials_from_refresh_token():
         client_secret = OAUTH_CLIENT_SECRET
         token_uri = OAUTH_TOKEN_URI
         
+        # Debug logging
+        print("\n=== OAuth Configuration Check ===")
+        print(f"Environment: {'Production (Render)' if is_production() else 'Local Development'}")
+        print(f"OAUTH_REFRESH_TOKEN: {'✓ Present' if refresh_token else '✗ MISSING'}")
+        print(f"OAUTH_CLIENT_ID: {'✓ Present' if client_id else '✗ MISSING'}")
+        print(f"OAUTH_CLIENT_SECRET: {'✓ Present' if client_secret else '✗ MISSING'}")
+        print(f"OAUTH_TOKEN_URI: {token_uri}")
+        
         if not all([refresh_token, client_id, client_secret]):
-            print("❌ Missing OAuth credentials in environment variables")
-            print(f"  - OAUTH_REFRESH_TOKEN: {'✓' if refresh_token else '✗'}")
-            print(f"  - WEB_CLIENT_ID: {'✓' if client_id else '✗'}")
-            print(f"  - WEB_CLIENT_SECRET: {'✓' if client_secret else '✗'}")
+            error_msg = "❌ Missing OAuth credentials in environment variables"
+            print(error_msg)
+            st.session_state.oauth_error = error_msg
+            return None
+        
+        # Validate token format
+        if len(refresh_token) < 20:
+            error_msg = "❌ OAUTH_REFRESH_TOKEN appears invalid (too short)"
+            print(error_msg)
+            st.session_state.oauth_error = error_msg
             return None
         
         # Create credentials from refresh token
@@ -169,16 +174,25 @@ def get_credentials_from_refresh_token():
         )
         
         # Refresh to get access token
-        print("🔄 Refreshing OAuth token...")
+        print("🔄 Attempting to refresh OAuth token...")
         creds.refresh(Request())
-        print("✅ OAuth token refreshed successfully")
+        print("✅ OAuth token refreshed successfully!")
+        st.session_state.oauth_error = None
         return creds
         
     except Exception as e:
-        print(f"❌ Error loading credentials from refresh token: {e}")
-        import traceback
-        traceback.print_exc()
+        error_msg = f"❌ OAuth Error: {str(e)}"
+        print(error_msg)
+        print("\n=== Troubleshooting Tips ===")
+        print("1. Make sure you generated credentials locally FIRST")
+        print("2. The refresh token expires if not used within 6 months")
+        print("3. Check that all OAuth environment variables are correctly copied")
+        print("4. Verify the credentials are from the same Google Cloud project")
+        print("5. Try regenerating the refresh token locally")
+        
+        st.session_state.oauth_error = str(e)
         return None
+
 
 # ----------------- LOCAL OAUTH TOKEN MANAGEMENT -----------------
 def save_token(creds):
@@ -454,7 +468,6 @@ GOOGLE_SHEET_ID=your_sheet_id_here""")
         
         return None
 
-# ----------------- SMART CREDENTIAL GETTER -----------------
 def get_google_credentials(interactive: bool = True):
     """
     Smart credential getter:
@@ -463,22 +476,55 @@ def get_google_credentials(interactive: bool = True):
     """
     if is_production():
         # PRODUCTION: Use refresh token from environment
-        print("🚀 Production environment detected")
+        print("🚀 Production environment detected (Render)")
         creds = get_credentials_from_refresh_token()
-        if creds:
-            print("✅ Credentials loaded from refresh token")
-            return creds
-        else:
-            if interactive:
-                st.error("❌ OAuth credentials not configured for production")
-                st.error("Please set OAUTH_* environment variables on Render")
-                with st.expander("📋 Required Environment Variables"):
-                    st.code("""OAUTH_REFRESH_TOKEN=your_refresh_token
-OAUTH_CLIENT_ID=your_client_id
-OAUTH_CLIENT_SECRET=your_client_secret
-OAUTH_TOKEN_URI=https://oauth2.googleapis.com/token
-GOOGLE_SHEET_ID=your_sheet_id""")
+        
+        if not creds and interactive:
+            st.error("❌ OAuth Configuration Failed")
+            
+            if st.session_state.oauth_error:
+                st.error(f"Error: {st.session_state.oauth_error}")
+            
+            with st.expander("🔧 How to Fix OAuth Configuration"):
+                st.markdown("""
+                ### The refresh token is invalid or expired. Here's how to fix it:
+                
+                #### Step 1: Generate New Credentials Locally
+                1. Run this app on your **local computer** (not on Render)
+                2. Make sure you have `client_secret.json` in your project folder
+                3. Click "Connect with Google" in the sidebar
+                4. Complete the authorization
+                5. Copy the credentials shown in the expandable section
+                
+                #### Step 2: Update Render Environment Variables
+                Replace these in your Render dashboard:
+                
+                ```
+                OAUTH_REFRESH_TOKEN=<paste new refresh token here>
+                OAUTH_CLIENT_ID=<paste client id here>
+                OAUTH_CLIENT_SECRET=<paste client secret here>
+                OAUTH_TOKEN_URI=https://oauth2.googleapis.com/token
+                ```
+                
+                #### Step 3: Manual Deploy
+                After updating environment variables, click "Manual Deploy" in Render.
+                
+                #### Common Issues:
+                - ❌ **Invalid Grant**: Refresh token expired or revoked
+                - ❌ **Missing Variables**: Check all OAUTH_* variables are set
+                - ❌ **Wrong Credentials**: Must use OAuth credentials, not API keys
+                - ❌ **Copy/Paste Error**: Ensure no extra spaces or line breaks
+                
+                #### Why This Happens:
+                - Refresh tokens can expire after 6 months of inactivity
+                - Changing Google Cloud settings can invalidate tokens
+                - Revoking access in Google Account settings invalidates tokens
+                """)
+                
+            st.warning("⚠️ App will work in LOCAL mode only (no Google Drive sync)")
             return None
+        
+        return creds
     else:
         # LOCAL: Use OAuth with local token file
         print("💻 Local development environment detected")
