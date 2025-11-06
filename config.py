@@ -5,18 +5,23 @@ from dotenv import load_dotenv
 # Load .env file (for local development)
 load_dotenv()
 
-# Try to load service account JSON (optional for local)
+# Try to load service account JSON (optional - don't fail if missing)
 service_account_info = None
 try:
     service_account_json = os.environ.get("SERVICE_ACCOUNT_JSON")
     if service_account_json:
         service_account_info = json.loads(service_account_json)
+        print("✅ SERVICE_ACCOUNT_JSON loaded successfully")
+    else:
+        print("ℹ️ SERVICE_ACCOUNT_JSON not found - using individual env vars or OAuth")
 except json.JSONDecodeError as e:
-    print(f"Warning: Invalid JSON in SERVICE_ACCOUNT_JSON: {e}")
+    print(f"⚠️ Warning: Invalid JSON in SERVICE_ACCOUNT_JSON: {e}")
+    print("ℹ️ Will try individual environment variables instead")
 except Exception as e:
-    print(f"Warning: Could not load SERVICE_ACCOUNT_JSON: {e}")
+    print(f"⚠️ Warning: Could not load SERVICE_ACCOUNT_JSON: {e}")
+    print("ℹ️ Will try individual environment variables instead")
 
-# Load other environment variables (optional)
+# Configuration dictionary
 config = {
     "service_account_info": service_account_info,
     "web_client_id": os.environ.get("WEB_CLIENT_ID", ""),
