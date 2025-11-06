@@ -73,7 +73,7 @@ SUBMISSIONS_FILE = "submissions.csv"
 # --- OAuth Config - MATCHES YOUR RENDER VARIABLE NAMES EXACTLY ---
 # Priority: Use WEB_* names first (as shown in your Render screenshot)
 # Fallback to OAUTH_* for backward compatibility
-OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN", "") or os.getenv("WEB_REFRESH_TOKEN", "")
+OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN") or os.getenv("WEB_REFRESH_TOKEN") or ""
 OAUTH_CLIENT_ID = os.getenv("WEB_CLIENT_ID", "") or os.getenv("OAUTH_CLIENT_ID", "")
 OAUTH_CLIENT_SECRET = os.getenv("WEB_CLIENT_SECRET", "") or os.getenv("OAUTH_CLIENT_SECRET", "")
 OAUTH_TOKEN_URI = os.getenv("WEB_TOKEN_URI", "") or os.getenv("OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
