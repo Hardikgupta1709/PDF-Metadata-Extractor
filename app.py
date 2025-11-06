@@ -40,15 +40,36 @@ except ImportError as e:
     st.error(f"**Failed to import local modules!** Details: {e}")
     st.stop()
 
+# ----------------- ENVIRONMENT DETECTION (Must be before CONFIG) -----------------
+def is_render_environment():
+    """Detect if running on Render"""
+    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_NAME") is not None
+
+def is_streamlit_cloud():
+    """Detect if running on Streamlit Cloud"""
+    return os.getenv("STREAMLIT_SHARING_MODE") is not None
+
+def is_production():
+    """Check if running in production"""
+    return is_render_environment() or is_streamlit_cloud()
+
 # ----------------- CONFIG -----------------
 st.set_page_config(page_title="Research Paper Submission", page_icon="📄", layout="wide")
 
 # --- Main Config ---
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")  # From your Render env
 SUBMISSIONS_FOLDER = "submitted_papers"
 SUBMISSIONS_FILE = "submissions.csv"
 
-# --- OAuth Config ---
+# --- OAuth Config from Render Environment Variables ---
+# OAuth credentials for production (Render)
+OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN", "")
+OAUTH_CLIENT_ID = os.getenv("WEB_CLIENT_ID", "")  # Using WEB_CLIENT_ID from your env
+OAUTH_CLIENT_SECRET = os.getenv("WEB_CLIENT_SECRET", "")  # Using WEB_CLIENT_SECRET from your env
+OAUTH_TOKEN_URI = os.getenv("WEB_TOKEN_URI", "https://oauth2.googleapis.com/token")  # Using WEB_TOKEN_URI
+
+# Local development OAuth config
 CLIENT_SECRET_FILE = "client_secret.json"
 OAUTH_PORT = int(os.getenv("PORT", "8502"))
 OAUTH_REDIRECT_URI = f"http://localhost:{OAUTH_PORT}"
@@ -65,65 +86,56 @@ GOOGLE_SHEETS_ENABLED = True
 GOOGLE_DRIVE_ENABLED = True
 GOOGLE_SHEET_NAME = "Research Paper Submissions"
 GOOGLE_DRIVE_FOLDER = "Research Paper Submissions - Detailed"
+
+# Google Drive and Sheets IDs from Render environment
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
+
+# GCP Configuration from Render environment
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCP_PRIVATE_KEY = os.getenv("GCP_PRIVATE_KEY", "")
+GCP_PRIVATE_KEY_ID = os.getenv("GCP_PRIVATE_KEY_ID", "")
+GCP_CLIENT_EMAIL = os.getenv("GCP_CLIENT_EMAIL", "")
+GCP_CLIENT_ID = os.getenv("GCP_CLIENT_ID", "")
+GCP_CLIENT_CERT_URL = os.getenv("GCP_CLIENT_CERT_URL", "")
+GCP_AUTH_URI = os.getenv("GCP_AUTH_URI", "https://accounts.google.com/o/oauth2/auth")
+GCP_AUTH_PROVIDER_CERT_URL = os.getenv("GCP_AUTH_PROVIDER_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs")
+GCP_TOKEN_URI = os.getenv("GCP_TOKEN_URI", "https://oauth2.googleapis.com/token")
+GCP_TYPE = os.getenv("GCP_TYPE", "service_account")
+GCP_UNIVERSE_DOMAIN = os.getenv("GCP_UNIVERSE_DOMAIN", "googleapis.com")
+
+# Email Configuration from Render environment
+SUBMISSION_DRIVE_EMAIL = os.getenv("SUBMISSION_DRIVE_EMAIL", "")
+
+# Gathering Stats Configuration
+GATHERINGSTATS = os.getenv("GATHERINGSTATS", "")
+
+# Headless mode configuration
+HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 
 # Token settings for local development
 TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
 
-# Sheet ID
-try:
-    SHEET_ID = st.secrets.get("google_sheet_id", os.getenv("GOOGLE_SHEET_ID", ""))
-except:
-    SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
-
-# ----------------- SESSION STATE INIT -----------------
-if 'metadata' not in st.session_state:
-    st.session_state.metadata = None
-if 'extracted' not in st.session_state:
-    st.session_state.extracted = False
-if 'admin_authenticated' not in st.session_state:
-    st.session_state.admin_authenticated = False
-if 'show_success' not in st.session_state:
-    st.session_state.show_success = False
-if 'grobid_server' not in st.session_state:
-    st.session_state.grobid_server = "https://kermitt2-grobid.hf.space"
-if "google_creds" not in st.session_state:
-    st.session_state.google_creds = None
-if 'payment_details' not in st.session_state:
-    st.session_state.payment_details = {}
-if 'token_expiry_date' not in st.session_state:
-    st.session_state.token_expiry_date = None
-if 'show_oauth_ui' not in st.session_state:
-    st.session_state.show_oauth_ui = False
-
-# ----------------- ENVIRONMENT DETECTION -----------------
-def is_render_environment():
-    """Detect if running on Render"""
-    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_NAME") is not None
-
-def is_streamlit_cloud():
-    """Detect if running on Streamlit Cloud"""
-    return os.getenv("STREAMLIT_SHARING_MODE") is not None
-
-def is_production():
-    """Check if running in production"""
-    return is_render_environment() or is_streamlit_cloud()
-
 # ----------------- OAUTH CREDENTIALS (WORKS EVERYWHERE) -----------------
 def get_credentials_from_refresh_token():
     """
     Get credentials from refresh token stored in environment variables.
     This works on Render/production without expiry issues.
+    Uses WEB_* environment variables from Render.
     """
     try:
-        refresh_token = os.getenv("OAUTH_REFRESH_TOKEN")
-        client_id = os.getenv("OAUTH_CLIENT_ID")
-        client_secret = os.getenv("OAUTH_CLIENT_SECRET")
-        token_uri = os.getenv("OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
+        refresh_token = OAUTH_REFRESH_TOKEN
+        client_id = OAUTH_CLIENT_ID
+        client_secret = OAUTH_CLIENT_SECRET
+        token_uri = OAUTH_TOKEN_URI
         
         if not all([refresh_token, client_id, client_secret]):
+            print("❌ Missing OAuth credentials in environment variables")
+            print(f"  - OAUTH_REFRESH_TOKEN: {'✓' if refresh_token else '✗'}")
+            print(f"  - WEB_CLIENT_ID: {'✓' if client_id else '✗'}")
+            print(f"  - WEB_CLIENT_SECRET: {'✓' if client_secret else '✗'}")
             return None
         
         # Create credentials from refresh token
@@ -137,11 +149,15 @@ def get_credentials_from_refresh_token():
         )
         
         # Refresh to get access token
+        print("🔄 Refreshing OAuth token...")
         creds.refresh(Request())
+        print("✅ OAuth token refreshed successfully")
         return creds
         
     except Exception as e:
         print(f"❌ Error loading credentials from refresh token: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # ----------------- LOCAL OAUTH TOKEN MANAGEMENT -----------------
