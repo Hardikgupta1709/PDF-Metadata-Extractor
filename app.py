@@ -382,23 +382,26 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
         expiry_date = save_token(creds)
         st.session_state.google_creds = creds
         
-        # Display credentials for Render setup
+        # Display success WITHOUT rerun
         st.success(f"✅ Connected! Token valid until {expiry_date.strftime('%B %d, %Y')}")
         
-        with st.expander("🔧 **IMPORTANT: Copy These to Render Environment Variables**"):
-            st.markdown("### Set these EXACT variable names in Render:")
-            st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
+        # ALWAYS SHOW credentials - don't hide in expander
+        st.markdown("---")
+        st.markdown("### 🔧 **Copy These to Render Environment Variables**")
+        st.markdown("**Set these EXACT variable names in Render:**")
+        st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
 WEB_CLIENT_ID={creds.client_id}
 WEB_CLIENT_SECRET={creds.client_secret}
 WEB_TOKEN_URI={creds.token_uri}
 GOOGLE_SHEET_ID=<your_sheet_id_here>
 GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
-            st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
-            st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+        st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
+        st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+        st.markdown("---")
         
-        time.sleep(2)
-        st.rerun()
+        # DON'T rerun - let user see the credentials
         return creds
+        
     except Exception as e:
         # Manual flow fallback
         st.warning("⚠️ Automatic auth failed. Using manual flow.")
@@ -469,20 +472,21 @@ GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
                     
                     st.success(f"✅ Authorization complete! Token valid until {expiry_date.strftime('%B %d, %Y')}")
                     
-                    # Display credentials for Render
-                    with st.expander("🔧 **IMPORTANT: Copy These to Render Environment Variables**"):
-                        st.markdown("### Set these EXACT variable names in Render:")
-                        st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
+                    # ALWAYS SHOW credentials - don't hide in expander
+                    st.markdown("---")
+                    st.markdown("### 🔧 **Copy These to Render Environment Variables**")
+                    st.markdown("**Set these EXACT variable names in Render:**")
+                    st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
 WEB_CLIENT_ID={creds.client_id}
 WEB_CLIENT_SECRET={creds.client_secret}
 WEB_TOKEN_URI={creds.token_uri}
 GOOGLE_SHEET_ID=<your_sheet_id_here>
 GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
-                        st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
-                        st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+                    st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
+                    st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+                    st.markdown("---")
                     
-                    time.sleep(2)
-                    st.rerun()
+                    # DON'T rerun - let user see the credentials
                     return creds
             except Exception as e:
                 st.error(f"❌ Connection failed: {str(e)}")
