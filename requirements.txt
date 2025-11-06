@@ -1,20 +1,50 @@
-grobid-client-python
-lxml
-pandas
-PyMuPDF
+
+# Core dependencies
+streamlit==1.28.0
 gunicorn==21.2.0
-streamlit
-gspread==5.12.0
+python-dotenv==1.2.1
+
+# Google API
 google-auth==2.23.4
-google-api-python-client
-Pillow==10.2.0
-requests==2.31.0
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
+google-api-python-client==2.108.0
+gspread==5.12.0
+
+# PDF processing
+PyMuPDF==1.23.8
 PyPDF2==3.0.1
-pytesseract
+grobid-client-python==0.0.7
+
+# Data processing
+pandas==2.0.3
+lxml==4.9.3
+
+# Image processing
+Pillow==10.2.0
+opencv-python-headless==4.8.1.78
 easyocr
-opencv-python-headless
+
+
+# OCR (optional - can be removed if still fails)
+pytesseract==0.3.10
+
+# HTTP
+requests==2.31.0
+
+
+
+
+
+
+
+
+
+
+
+python-dotenv==1.2.1
+
+
 
 
 
