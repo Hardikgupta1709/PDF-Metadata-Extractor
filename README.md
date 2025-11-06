@@ -535,6 +535,6 @@ Planned enhancements include:
 
 ---
 
-**Developed and maintained by [Your Name]**
+**Developed and maintained by [Hardik Gupta]**
 
 For more information, visit the project repository or contact the maintainer.
