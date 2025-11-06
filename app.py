@@ -351,29 +351,69 @@ def get_oauth_credentials(interactive: bool = True) -> Optional[object]:
 def get_service_account_credentials():
     """Get service account credentials for Render/production"""
     try:
-        # Try environment variables
-        if os.getenv('GCP_TYPE'):
+        # Method 1: Load from config.py (SERVICE_ACCOUNT_JSON)
+        if config.get("service_account_info"):
+            print("✅ Loading service account from config (SERVICE_ACCOUNT_JSON)")
+            return ServiceAccountCredentials.from_service_account_info(
+                config["service_account_info"], 
+                scopes=SCOPES
+            )
+        
+        # Method 2: Load from individual environment variables (your Render setup)
+        gcp_type = os.getenv('GCP_TYPE')
+        gcp_private_key = os.getenv('GCP_PRIVATE_KEY')
+        gcp_client_email = os.getenv('GCP_CLIENT_EMAIL')
+        gcp_project_id = os.getenv('GCP_PROJECT_ID')
+        
+        if gcp_private_key and gcp_client_email and gcp_project_id:
+            print("✅ Loading service account from individual environment variables")
+            
+            # Fix the private key format (replace literal \n with actual newlines)
+            private_key = gcp_private_key.replace('\\n', '\n')
+            
+            # Build credentials dictionary
             creds_dict = {
-                "type": os.getenv('GCP_TYPE'),
-                "project_id": os.getenv('GCP_PROJECT_ID'),
-                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
-                "private_key": os.getenv('GCP_PRIVATE_KEY'),
-                "client_email": os.getenv('GCP_CLIENT_EMAIL'),
-                "client_id": os.getenv('GCP_CLIENT_ID'),
+                "type": gcp_type or "service_account",
+                "project_id": gcp_project_id,
+                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID', ''),
+                "private_key": private_key,
+                "client_email": gcp_client_email,
+                "client_id": os.getenv('GCP_CLIENT_ID', ''),
                 "auth_uri": os.getenv('GCP_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
                 "token_uri": os.getenv('GCP_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
-                "auth_provider_x509_cert_url": os.getenv('GCP_AUTH_PROVIDER_CERT_URL'),
-                "client_x509_cert_url": os.getenv('GCP_CLIENT_CERT_URL'),
+                "auth_provider_x509_cert_url": os.getenv('GCP_AUTH_PROVIDER_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
+                "client_x509_cert_url": os.getenv('GCP_CLIENT_CERT_URL', ''),
                 "universe_domain": os.getenv('GCP_UNIVERSE_DOMAIN', 'googleapis.com')
             }
-            return ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        elif hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            
+            print(f"📋 Service account email: {gcp_client_email}")
+            print(f"📋 Project ID: {gcp_project_id}")
+            
+            try:
+                return ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            except Exception as cred_error:
+                print(f"❌ Failed to create credentials: {cred_error}")
+                # Check if private key format is the issue
+                if "Could not deserialize key data" in str(cred_error):
+                    print("💡 Hint: Private key format might be incorrect. Ensure it has \\n (literal backslash-n) not real newlines")
+                raise
+        
+        # Method 3: Try Streamlit secrets (for Streamlit Cloud deployment)
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            print("✅ Loading service account from Streamlit secrets")
             return ServiceAccountCredentials.from_service_account_info(
                 dict(st.secrets["gcp_service_account"]), 
                 scopes=SCOPES
             )
+        
+        print("⚠️ No service account credentials found")
+        print("Available env vars:", [k for k in os.environ.keys() if k.startswith('GCP_')])
         return None
+        
     except Exception as e:
+        print(f"❌ Error loading service account: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def is_render_environment():
