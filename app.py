@@ -118,6 +118,26 @@ TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
 
+# ----------------- SESSION STATE INIT (Must be before any st.session_state access) -----------------
+if 'metadata' not in st.session_state:
+    st.session_state.metadata = None
+if 'extracted' not in st.session_state:
+    st.session_state.extracted = False
+if 'admin_authenticated' not in st.session_state:
+    st.session_state.admin_authenticated = False
+if 'show_success' not in st.session_state:
+    st.session_state.show_success = False
+if 'grobid_server' not in st.session_state:
+    st.session_state.grobid_server = "https://kermitt2-grobid.hf.space"
+if "google_creds" not in st.session_state:
+    st.session_state.google_creds = None
+if 'payment_details' not in st.session_state:
+    st.session_state.payment_details = {}
+if 'token_expiry_date' not in st.session_state:
+    st.session_state.token_expiry_date = None
+if 'show_oauth_ui' not in st.session_state:
+    st.session_state.show_oauth_ui = False
+
 # ----------------- OAUTH CREDENTIALS (WORKS EVERYWHERE) -----------------
 def get_credentials_from_refresh_token():
     """
@@ -470,6 +490,16 @@ def build_drive_service(creds):
 
 def build_sheets_service(creds):
     return build("sheets", "v4", credentials=creds)
+
+# ----------------- SESSION STATE INIT -----------------
+# THIS MUST COME BEFORE ANY SIDEBAR OR UI CODE
+if 'metadata' not in st.session_state:
+    st.session_state.metadata = None
+if 'extracted' not in st.session_state:
+    st.session_state.extracted = False
+if 'admin_authenticated' not in st.session_state:
+    st.session_state.admin_authenticated = False
+
 
 # ----------------- LOCAL STORAGE & CSV -----------------
 def init_csv():
