@@ -36,14 +36,22 @@ try:
     from src.parser.image_extractor import extract_payment_info_from_image, format_payment_details
     from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
     from src.parser.email_extractor import extract_full_text, find_emails
+    print("✅ All local modules imported successfully")
 except ImportError as e:
     st.error(f"**Failed to import local modules!** Details: {e}")
-    st.stop()
+    st.warning("📦 Make sure all dependencies are installed")
+    st.info("💡 You can still use manual form filling")
 
 # ----------------- ENVIRONMENT DETECTION (Must be before CONFIG) -----------------
 def is_render_environment():
     """Detect if running on Render"""
-    return os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_NAME") is not None
+    is_render = (
+        os.getenv("RENDER") == "true" or 
+        os.getenv("RENDER_SERVICE_NAME") is not None or
+        os.getenv("RENDER_EXTERNAL_URL") is not None
+    )
+    print(f"🔍 Is Render Environment: {is_render}")
+    return is_render
 
 def is_streamlit_cloud():
     """Detect if running on Streamlit Cloud"""
@@ -62,13 +70,13 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
 SUBMISSIONS_FOLDER = "submitted_papers"
 SUBMISSIONS_FILE = "submissions.csv"
 
-# --- OAuth Config from Render Environment Variables ---
-# CRITICAL: Check which variable naming you're using in Render
-# Option 1: If using OAUTH_* prefix in Render
-OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN", "")
-OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID", "") or os.getenv("WEB_CLIENT_ID", "")
-OAUTH_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET", "") or os.getenv("WEB_CLIENT_SECRET", "")
-OAUTH_TOKEN_URI = os.getenv("OAUTH_TOKEN_URI", "") or os.getenv("WEB_TOKEN_URI", "https://oauth2.googleapis.com/token")
+# --- OAuth Config - MATCHES YOUR RENDER VARIABLE NAMES EXACTLY ---
+# Priority: Use WEB_* names first (as shown in your Render screenshot)
+# Fallback to OAUTH_* for backward compatibility
+OAUTH_REFRESH_TOKEN = os.getenv("OAUTH_REFRESH_TOKEN", "") or os.getenv("WEB_REFRESH_TOKEN", "")
+OAUTH_CLIENT_ID = os.getenv("WEB_CLIENT_ID", "") or os.getenv("OAUTH_CLIENT_ID", "")
+OAUTH_CLIENT_SECRET = os.getenv("WEB_CLIENT_SECRET", "") or os.getenv("OAUTH_CLIENT_SECRET", "")
+OAUTH_TOKEN_URI = os.getenv("WEB_TOKEN_URI", "") or os.getenv("OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
 
 # Local development OAuth config
 CLIENT_SECRET_FILE = "client_secret.json"
@@ -88,14 +96,9 @@ GOOGLE_DRIVE_ENABLED = True
 GOOGLE_SHEET_NAME = "Research Paper Submissions"
 GOOGLE_DRIVE_FOLDER = "Research Paper Submissions - Detailed"
 
-# Google Drive and Sheets IDs from Render environment
+# Google Drive and Sheets IDs from environment
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
-
-# GCP Configuration (if using service account instead)
-GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
-GCP_PRIVATE_KEY = os.getenv("GCP_PRIVATE_KEY", "")
-GCP_CLIENT_EMAIL = os.getenv("GCP_CLIENT_EMAIL", "")
 
 # Email Configuration
 SUBMISSION_DRIVE_EMAIL = os.getenv("SUBMISSION_DRIVE_EMAIL", "")
@@ -109,26 +112,25 @@ TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
 
 # ----------------- SESSION STATE INIT -----------------
-if 'metadata' not in st.session_state:
-    st.session_state.metadata = None
-if 'extracted' not in st.session_state:
-    st.session_state.extracted = False
-if 'admin_authenticated' not in st.session_state:
-    st.session_state.admin_authenticated = False
-if 'show_success' not in st.session_state:
-    st.session_state.show_success = False
-if 'grobid_server' not in st.session_state:
-    st.session_state.grobid_server = "https://kermitt2-grobid.hf.space"
-if "google_creds" not in st.session_state:
-    st.session_state.google_creds = None
-if 'payment_details' not in st.session_state:
-    st.session_state.payment_details = {}
-if 'token_expiry_date' not in st.session_state:
-    st.session_state.token_expiry_date = None
-if 'show_oauth_ui' not in st.session_state:
-    st.session_state.show_oauth_ui = False
-if 'oauth_error' not in st.session_state:
-    st.session_state.oauth_error = None
+def init_session_state():
+    """Initialize all session state variables"""
+    defaults = {
+        'metadata': None,
+        'extracted': False,
+        'admin_authenticated': False,
+        'show_success': False,
+        'grobid_server': "https://kermitt2-grobid.hf.space",
+        'google_creds': None,
+        'payment_details': {},
+        'token_expiry_date': None,
+        'show_oauth_ui': False,
+        'oauth_error': None
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+init_session_state()
 
 # ----------------- OAUTH CREDENTIALS (WORKS EVERYWHERE) -----------------
 def get_credentials_from_refresh_token():
@@ -142,23 +144,39 @@ def get_credentials_from_refresh_token():
         client_secret = OAUTH_CLIENT_SECRET
         token_uri = OAUTH_TOKEN_URI
         
-        # Debug logging
+        # Enhanced debug logging
         print("\n=== OAuth Configuration Check ===")
         print(f"Environment: {'Production (Render)' if is_production() else 'Local Development'}")
-        print(f"OAUTH_REFRESH_TOKEN: {'✓ Present' if refresh_token else '✗ MISSING'}")
+        print(f"OAUTH_REFRESH_TOKEN: {'✓ Present' if refresh_token else '✗ MISSING'} ({len(refresh_token)} chars)")
+        
+        if refresh_token and len(refresh_token) > 20:
+            print(f"  Preview: {refresh_token[:20]}...{refresh_token[-10:]}")
+        
         print(f"OAUTH_CLIENT_ID: {'✓ Present' if client_id else '✗ MISSING'}")
-        print(f"OAUTH_CLIENT_SECRET: {'✓ Present' if client_secret else '✗ MISSING'}")
+        if client_id and len(client_id) > 20:
+            print(f"  Preview: {client_id[:30]}...")
+        
+        print(f"OAUTH_CLIENT_SECRET: {'✓ Present' if client_secret else '✗ MISSING'} ({len(client_secret)} chars)")
         print(f"OAUTH_TOKEN_URI: {token_uri}")
         
         if not all([refresh_token, client_id, client_secret]):
             error_msg = "❌ Missing OAuth credentials in environment variables"
+            missing = []
+            if not refresh_token:
+                missing.append("OAUTH_REFRESH_TOKEN")
+            if not client_id:
+                missing.append("WEB_CLIENT_ID")
+            if not client_secret:
+                missing.append("WEB_CLIENT_SECRET")
+            
+            error_msg += f"\nMissing: {', '.join(missing)}"
             print(error_msg)
             st.session_state.oauth_error = error_msg
             return None
         
-        # Validate token format
-        if len(refresh_token) < 20:
-            error_msg = "❌ OAUTH_REFRESH_TOKEN appears invalid (too short)"
+        # Validate token format - refresh tokens should be 50+ characters
+        if len(refresh_token) < 50:
+            error_msg = f"❌ OAUTH_REFRESH_TOKEN appears invalid (too short: {len(refresh_token)} chars, expected: 100+)"
             print(error_msg)
             st.session_state.oauth_error = error_msg
             return None
@@ -367,13 +385,15 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
         # Display credentials for Render setup
         st.success(f"✅ Connected! Token valid until {expiry_date.strftime('%B %d, %Y')}")
         
-        with st.expander("🔧 Setup for Render Deployment"):
-            st.markdown("### Copy these to Render Environment Variables:")
+        with st.expander("🔧 **IMPORTANT: Copy These to Render Environment Variables**"):
+            st.markdown("### Set these EXACT variable names in Render:")
             st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
-OAUTH_CLIENT_ID={creds.client_id}
-OAUTH_CLIENT_SECRET={creds.client_secret}
-OAUTH_TOKEN_URI={creds.token_uri}
-GOOGLE_SHEET_ID=your_sheet_id_here""")
+WEB_CLIENT_ID={creds.client_id}
+WEB_CLIENT_SECRET={creds.client_secret}
+WEB_TOKEN_URI={creds.token_uri}
+GOOGLE_SHEET_ID=<your_sheet_id_here>
+GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
+            st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
             st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
         
         time.sleep(2)
@@ -450,13 +470,15 @@ GOOGLE_SHEET_ID=your_sheet_id_here""")
                     st.success(f"✅ Authorization complete! Token valid until {expiry_date.strftime('%B %d, %Y')}")
                     
                     # Display credentials for Render
-                    with st.expander("🔧 Setup for Render Deployment"):
-                        st.markdown("### Copy these to Render Environment Variables:")
+                    with st.expander("🔧 **IMPORTANT: Copy These to Render Environment Variables**"):
+                        st.markdown("### Set these EXACT variable names in Render:")
                         st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
-OAUTH_CLIENT_ID={creds.client_id}
-OAUTH_CLIENT_SECRET={creds.client_secret}
-OAUTH_TOKEN_URI={creds.token_uri}
-GOOGLE_SHEET_ID=your_sheet_id_here""")
+WEB_CLIENT_ID={creds.client_id}
+WEB_CLIENT_SECRET={creds.client_secret}
+WEB_TOKEN_URI={creds.token_uri}
+GOOGLE_SHEET_ID=<your_sheet_id_here>
+GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
+                        st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
                         st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
                     
                     time.sleep(2)
@@ -497,13 +519,15 @@ def get_google_credentials(interactive: bool = True):
                 5. Copy the credentials shown in the expandable section
                 
                 #### Step 2: Update Render Environment Variables
-                Replace these in your Render dashboard:
+                Add these EXACT variable names in your Render dashboard:
                 
                 ```
-                OAUTH_REFRESH_TOKEN=<paste new refresh token here>
-                OAUTH_CLIENT_ID=<paste client id here>
-                OAUTH_CLIENT_SECRET=<paste client secret here>
-                OAUTH_TOKEN_URI=https://oauth2.googleapis.com/token
+                OAUTH_REFRESH_TOKEN=<paste the FULL token here - it's very long!>
+                WEB_CLIENT_ID=<paste client id here>
+                WEB_CLIENT_SECRET=<paste client secret here>
+                WEB_TOKEN_URI=https://oauth2.googleapis.com/token
+                GOOGLE_SHEET_ID=<your sheet id>
+                GOOGLE_DRIVE_FOLDER_ID=<your folder id>
                 ```
                 
                 #### Step 3: Manual Deploy
@@ -511,9 +535,10 @@ def get_google_credentials(interactive: bool = True):
                 
                 #### Common Issues:
                 - ❌ **Invalid Grant**: Refresh token expired or revoked
-                - ❌ **Missing Variables**: Check all OAUTH_* variables are set
+                - ❌ **Missing Variables**: Check all variables are set (especially OAUTH_REFRESH_TOKEN)
                 - ❌ **Wrong Credentials**: Must use OAuth credentials, not API keys
-                - ❌ **Copy/Paste Error**: Ensure no extra spaces or line breaks
+                - ❌ **Copy/Paste Error**: Ensure no extra spaces or line breaks, copy the FULL token
+                - ❌ **Variable Names**: Must match exactly (WEB_CLIENT_ID, not OAUTH_CLIENT_ID)
                 
                 #### Why This Happens:
                 - Refresh tokens can expire after 6 months of inactivity
@@ -537,16 +562,6 @@ def build_drive_service(creds):
 def build_sheets_service(creds):
     return build("sheets", "v4", credentials=creds)
 
-# ----------------- SESSION STATE INIT -----------------
-# THIS MUST COME BEFORE ANY SIDEBAR OR UI CODE
-if 'metadata' not in st.session_state:
-    st.session_state.metadata = None
-if 'extracted' not in st.session_state:
-    st.session_state.extracted = False
-if 'admin_authenticated' not in st.session_state:
-    st.session_state.admin_authenticated = False
-
-
 # ----------------- LOCAL STORAGE & CSV -----------------
 def init_csv():
     if not os.path.exists(SUBMISSIONS_FILE):
@@ -559,6 +574,10 @@ def init_csv():
                 "Local PDF Path", "Local Image Path",
                 "Drive Document Link", "Drive Folder Link"
             ])
+        
+        if is_production():
+            print("⚠️ WARNING: CSV storage is ephemeral on Render. Data will be lost on restart!")
+            print("💡 Google Sheets integration is REQUIRED for persistent storage")
 
 def init_storage():
     os.makedirs(SUBMISSIONS_FOLDER, exist_ok=True)
@@ -827,31 +846,35 @@ with st.sidebar:
                 st.success("✅ Connected via Refresh Token")
                 st.caption("No expiry - always active!")
             else:
-                # Continue from st.error("❌ Not Connected")
                 st.error("❌ Not Connected")
-                st.warning("⚠️ OAuth credentials missing")
+                st.warning("⚠️ OAuth credentials missing or invalid")
                 
                 with st.expander("📋 Setup Instructions for Render"):
                     st.markdown("""
                     ### Step 1: Authorize Locally First
-                    1. Run this app locally
+                    1. Run this app **locally** on your computer
                     2. Click "Connect with Google" below
                     3. Authorize with your Google account
                     4. Copy the credentials shown in the expandable section
                     
                     ### Step 2: Add to Render Environment Variables
-                    Set these in your Render dashboard:
+                    Set these **EXACT** names in your Render dashboard:
                     ```
-                    OAUTH_REFRESH_TOKEN=your_refresh_token
-                    OAUTH_CLIENT_ID=your_client_id
-                    OAUTH_CLIENT_SECRET=your_client_secret
-                    OAUTH_TOKEN_URI=https://oauth2.googleapis.com/token
-                    GOOGLE_SHEET_ID=your_sheet_id
-                    GOOGLE_DRIVE_FOLDER_ID=your_folder_id (optional)
+                    OAUTH_REFRESH_TOKEN=<your_refresh_token>
+                    WEB_CLIENT_ID=<your_client_id>
+                    WEB_CLIENT_SECRET=<your_client_secret>
+                    WEB_TOKEN_URI=https://oauth2.googleapis.com/token
+                    GOOGLE_SHEET_ID=<your_sheet_id>
+                    GOOGLE_DRIVE_FOLDER_ID=<your_folder_id>
                     ```
                     
                     ### Step 3: Redeploy on Render
-                    Your app will now connect automatically without expiry!
+                    Click "Manual Deploy" - your app will now connect automatically!
+                    
+                    ### Important Notes:
+                    - The refresh token is VERY long (100+ characters) - copy it completely!
+                    - Variable names must match EXACTLY
+                    - No extra spaces or line breaks
                     """)
                 
                 st.info("💡 Authorize locally first, then deploy to Render with the refresh token")
@@ -889,6 +912,25 @@ with st.sidebar:
                 if st.button("🔗 Connect with Google", use_container_width=True, type="primary", key="connect_btn"):
                     st.session_state.show_oauth_ui = True
                     st.rerun()
+
+        # Debug info for admin
+        if st.session_state.admin_authenticated:
+            with st.expander("🔍 Debug Environment Variables"):
+                st.code(f"""
+Environment: {'Production (Render)' if is_production() else 'Local Development'}
+RENDER: {os.getenv('RENDER', 'Not set')}
+HEADLESS: {os.getenv('HEADLESS', 'Not set')}
+
+OAuth Configuration:
+OAUTH_REFRESH_TOKEN: {'✓ Set' if OAUTH_REFRESH_TOKEN else '✗ Missing'} ({len(OAUTH_REFRESH_TOKEN)} chars)
+WEB_CLIENT_ID: {'✓ Set' if OAUTH_CLIENT_ID else '✗ Missing'}
+WEB_CLIENT_SECRET: {'✓ Set' if OAUTH_CLIENT_SECRET else '✗ Missing'} ({len(OAUTH_CLIENT_SECRET)} chars)
+WEB_TOKEN_URI: {OAUTH_TOKEN_URI}
+
+Google Services:
+GOOGLE_SHEET_ID: {'✓ Set' if SHEET_ID else '✗ Missing'}
+GOOGLE_DRIVE_FOLDER_ID: {'✓ Set' if GOOGLE_DRIVE_FOLDER_ID else '✗ Missing'}
+                """)
 
         st.markdown("---")
         st.subheader("📊 Dashboard")
@@ -1252,7 +1294,11 @@ if uploaded_pdf and uploaded_image:
                             st.warning("⚠️ Drive upload failed. Files saved locally.")
                 elif GOOGLE_DRIVE_ENABLED:
                     st.warning("⚠️ Google not connected. Files saved locally only.")
-                    st.info("💡 Admin can connect Google Drive from the sidebar")
+                    if is_production():
+                        st.error("🚨 CRITICAL: Google Drive is not configured on Render!")
+                        st.info("💡 Files are saved temporarily but will be LOST on restart")
+                    else:
+                        st.info("💡 Admin can connect Google Drive from the sidebar")
 
                 try:
                     append_to_csv(submission_data)
