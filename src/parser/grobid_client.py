@@ -10,6 +10,14 @@ from typing import Dict
 def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 3) -> str:
     """
     Send PDF to GROBID server and get TEI XML response with retry logic
+    
+    Args:
+        pdf_path: Path to the PDF file
+        grobid_server: URL of GROBID server (e.g., "https://kermitt2-grobid.hf.space")
+        max_retries: Number of retry attempts
+    
+    Returns:
+        TEI XML string from GROBID
     """
     url = f"{grobid_server}/api/processFulltextDocument"
     
@@ -65,6 +73,12 @@ def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 
 def extract_metadata_from_tei(tei_xml: str) -> Dict:
     """
     Enhanced metadata extraction from GROBID TEI XML
+    
+    Args:
+        tei_xml: TEI XML string from GROBID
+    
+    Returns:
+        Dictionary with extracted metadata
     """
     namespaces = {'tei': 'http://www.tei-c.org/ns/1.0'}
     
@@ -167,6 +181,18 @@ def extract_metadata_from_tei(tei_xml: str) -> Dict:
     if date_elem is not None:
         metadata['publication_date'] = date_elem.get('when', '') or clean_text(date_elem.text or '')
     
+    # ============ AFFILIATIONS ============
+    affiliations = []
+    affiliation_elems = root.findall('.//tei:sourceDesc//tei:affiliation', namespaces)
+    for affil in affiliation_elems:
+        org_name = affil.find('.//tei:orgName', namespaces)
+        if org_name is not None and org_name.text:
+            affiliations.append(clean_text(org_name.text))
+    
+    if affiliations:
+        metadata['affiliations'] = list(set(affiliations))  # Remove duplicates
+        print(f"✅ Found {len(metadata['affiliations'])} affiliations")
+    
     # ============ BODY TEXT (Preview) ============
     body_paragraphs = root.findall('.//tei:body//tei:p', namespaces)
     body_texts = []
@@ -185,19 +211,33 @@ def extract_metadata_from_tei(tei_xml: str) -> Dict:
 
 
 def get_empty_metadata() -> Dict:
-    """Return empty metadata structure"""
+    """
+    Return empty metadata structure
+    
+    Returns:
+        Dictionary with empty fields
+    """
     return {
         'title': '',
         'authors': [],
         'abstract': '',
         'keywords': [],
+        'affiliations': [],
         'publication_date': '',
         'body_text': ''
     }
 
 
 def clean_text(text: str) -> str:
-    """Clean and normalize extracted text"""
+    """
+    Clean and normalize extracted text
+    
+    Args:
+        text: Raw text from XML
+    
+    Returns:
+        Cleaned text string
+    """
     if not text:
         return ''
     
