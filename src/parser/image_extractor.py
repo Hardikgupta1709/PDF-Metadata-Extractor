@@ -1,418 +1,405 @@
 """
-Extract payment details from receipt images using Tesseract OCR (lightweight)
+Extract transaction IDs and payment details from receipt images with auto-fill
 """
 import re
-import os
-import platform
-from PIL import Image, ImageEnhance, ImageFilter
+import requests
+from PIL import Image
+import io
+import pytesseract
 from typing import Dict, Optional
-import numpy as np
 
-# Configure Tesseract based on platform
-try:
-    import pytesseract
-    
-    # Set Tesseract path for different environments
-    if platform.system() == 'Linux':
-        tesseract_cmd = '/usr/bin/tesseract'
-        if os.path.exists(tesseract_cmd):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-            print(f"✅ Tesseract found at: {tesseract_cmd}")
-        else:
-            print("⚠️ Tesseract not found - OCR may not work")
-    
-    TESSERACT_AVAILABLE = True
-except ImportError:
-    print("⚠️ pytesseract not installed - payment extraction disabled")
-    TESSERACT_AVAILABLE = False
 
-# Optional: OpenCV for advanced preprocessing
-try:
-    import cv2
-    CV2_AVAILABLE = True
-    print("✅ OpenCV available for advanced preprocessing")
-except ImportError:
-    CV2_AVAILABLE = False
-    print("ℹ️ OpenCV not available - using basic preprocessing only")
+# --------------------------------------------------------
+# OCR utilities
+# --------------------------------------------------------
 
-def preprocess_image_advanced(image):
-    """
-    Advanced image preprocessing for better OCR accuracy
-    """
-    if not CV2_AVAILABLE:
-        # Fallback to PIL-only preprocessing
-        gray = image.convert('L')
-        return [np.array(gray)]
-    
-    # Convert PIL to OpenCV format
-    img_array = np.array(image)
-    
-    # Convert to grayscale
-    if len(img_array.shape) == 3:
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = img_array
-    
-    # Apply different preprocessing techniques
-    processed_images = []
-    
-    # 1. Original grayscale
-    processed_images.append(gray)
-    
-    # 2. Adaptive thresholding (best for varying lighting)
-    adaptive = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 11, 2
-    )
-    processed_images.append(adaptive)
-    
-    # 3. Otsu's thresholding (good for bimodal images)
-    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    processed_images.append(otsu)
-    
-    # 4. Increase contrast
-    enhanced = cv2.equalizeHist(gray)
-    processed_images.append(enhanced)
-    
-    # 5. Denoise + threshold
+def extract_text_from_image_tesseract(image_file) -> str:
+    """Extract text from image using Tesseract OCR"""
     try:
-        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-        _, denoised_thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        processed_images.append(denoised_thresh)
-    except Exception as e:
-        print(f"⚠️ Denoising failed: {e}")
-    
-    return processed_images
-
-def extract_text_tesseract_enhanced(image_file) -> str:
-    """
-    Extract text using Tesseract with multiple preprocessing techniques
-    """
-    if not TESSERACT_AVAILABLE:
-        print("❌ Tesseract not available")
-        return ""
-    
-    try:
-        # Open image
         image = Image.open(image_file)
-        
-        # Convert to RGB
+
         if image.mode != 'RGB':
             image = image.convert('RGB')
-        
-        # Try multiple preprocessing methods
-        all_texts = []
-        
-        # Method 1: Simple PIL enhancement
-        try:
-            enhancer = ImageEnhance.Contrast(image)
-            enhanced = enhancer.enhance(2.5)
-            enhancer = ImageEnhance.Sharpness(enhanced)
-            enhanced = enhancer.enhance(2.0)
-            
-            text1 = pytesseract.image_to_string(enhanced, config='--oem 3 --psm 6')
-            all_texts.append(text1)
-        except Exception as e:
-            print(f"⚠️ PIL enhancement failed: {e}")
-        
-        # Method 2: Advanced OpenCV preprocessing
-        if CV2_AVAILABLE:
-            try:
-                processed_images = preprocess_image_advanced(image)
-                
-                for idx, processed in enumerate(processed_images):
-                    # Convert back to PIL for pytesseract
-                    pil_img = Image.fromarray(processed)
-                    text = pytesseract.image_to_string(pil_img, config='--oem 3 --psm 6')
-                    all_texts.append(text)
-            except Exception as e:
-                print(f"⚠️ OpenCV preprocessing failed: {e}")
-        
-        # Method 3: Try different PSM modes on enhanced image
-        for psm in [3, 4, 11]:
-            try:
-                text = pytesseract.image_to_string(
-                    enhanced, 
-                    config=f'--oem 3 --psm {psm}'
-                )
-                all_texts.append(text)
-            except:
-                continue
-        
-        # Combine all extracted texts
-        combined_text = '\n\n'.join(all_texts)
-        
-        print(f"📝 Extracted {len(combined_text)} characters from {len(all_texts)} methods")
-        
-        return combined_text
-        
+
+        return pytesseract.image_to_string(image)
+
     except Exception as e:
-        print(f"❌ Tesseract extraction error: {str(e)}")
+        print(f"Tesseract extraction error: {str(e)}")
         return ""
 
-def extract_payment_info_from_image(image_file, grobid_server: str = None, 
-                                   use_tesseract: bool = True,
-                                   use_easyocr: bool = False) -> Dict[str, Optional[str]]:
-    """
-    Extract payment information using Tesseract only (lightweight)
-    """
-    if not TESSERACT_AVAILABLE:
-        print("❌ Tesseract not available - cannot extract payment info")
-        return {
-            'transaction_id': '',
-            'amount': '',
-            'date': '',
-            'time': '',
-            'payment_method': '',
-            'status': '',
-            'upi_id': '',
-            'bank_name': '',
-            'raw_text': 'Tesseract OCR not available'
-        }
-    
-    print("🔍 Starting payment extraction with Tesseract...")
-    
-    # Extract text using enhanced Tesseract
-    extracted_text = extract_text_tesseract_enhanced(image_file)
-    
-    if not extracted_text or len(extracted_text) < 20:
-        print("❌ Insufficient text extracted from image")
-        return {
-            'transaction_id': '',
-            'amount': '',
-            'date': '',
-            'time': '',
-            'payment_method': '',
-            'status': '',
-            'upi_id': '',
-            'bank_name': '',
-            'raw_text': extracted_text
-        }
-    
-    # Extract payment details
-    details = extract_payment_details_smart(extracted_text)
-    details['raw_text'] = extracted_text[:1000]
-    
-    # Debug output
-    print(f"\n{'='*50}")
-    print(f"EXTRACTION RESULTS:")
-    print(f"{'='*50}")
-    print(f"💳 Transaction ID: {details['transaction_id'] or 'NOT FOUND'}")
-    print(f"💰 Amount: {details['amount'] or 'NOT FOUND'}")
-    print(f"📅 Date: {details['date'] or 'NOT FOUND'}")
-    print(f"📱 Method: {details['payment_method'] or 'NOT FOUND'}")
-    print(f"{'='*50}\n")
-    
-    return details
 
-def extract_payment_details_smart(text: str) -> Dict[str, Optional[str]]:
-    """
-    Smart extraction with aggressive pattern matching
-    """
-    details = {
-        'transaction_id': '',
-        'amount': '',
-        'date': '',
-        'time': '',
-        'payment_method': '',
-        'status': '',
-        'upi_id': '',
-        'bank_name': ''
-    }
-    
+def extract_text_from_image_grobid(image_path: str, grobid_server: str) -> str:
+    """Extract text from image/PDF using GROBID (mostly PDF)"""
+    try:
+        url = f"{grobid_server}/api/processFulltextDocument"
+
+        with open(image_path, 'rb') as f:
+            files = {'input': f}
+            response = requests.post(url, files=files, timeout=60)
+
+        if response.status_code != 200:
+            return ""
+
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.text)
+
+        text_parts = []
+        for elem in root.iter():
+            if elem.text:
+                text_parts.append(elem.text.strip())
+
+        return " ".join(text_parts)
+
+    except Exception as e:
+        print(f"GROBID extraction error: {str(e)}")
+        return ""
+
+
+def extract_text_from_image_easyocr(image_file) -> str:
+    """Extract text from image using EasyOCR"""
+    try:
+        import easyocr
+
+        reader = easyocr.Reader(['en'])
+        image = Image.open(image_file)
+
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format="PNG")
+
+        results = reader.readtext(img_byte_arr.getvalue())
+
+        return " ".join([r[1] for r in results])
+
+    except Exception as e:
+        print(f"EasyOCR extraction error: {str(e)}")
+        return ""
+
+
+# --------------------------------------------------------
+# Transaction extraction
+# --------------------------------------------------------
+
+def is_false_positive(text: str) -> bool:
+    """Reject non-ID tokens"""
     if not text:
-        return details
-    
-    text_upper = text.upper()
-    lines = text_upper.split('\n')
-    
-    # ============ TRANSACTION ID (MOST AGGRESSIVE) ============
-    print("\n🔍 Searching for Transaction ID...")
-    
-    # Pattern 1: Explicit labels (highest priority)
-    explicit_patterns = [
-        (r'(?:TRANSACTION|TXN|TRANS)\s*(?:ID|NO|NUMBER|REF)[:\s]*([A-Z0-9]{8,30})', 'Explicit TXN label'),
-        (r'(?:UTR|UPI\s*REF)[:\s]*([A-Z0-9]{10,25})', 'UTR/UPI Ref'),
-        (r'(?:ORDER|PAYMENT|RECEIPT)\s*(?:ID|NO)[:\s]*([A-Z0-9]{10,30})', 'Order/Payment ID'),
-        (r'(?:REF(?:ERENCE)?)\s*(?:NO|NUMBER)[:\s]*([A-Z0-9]{10,30})', 'Reference Number'),
-    ]
-    
-    for pattern, description in explicit_patterns:
-        match = re.search(pattern, text_upper)
-        if match:
-            candidate = match.group(1).strip()
-            if is_valid_transaction_id(candidate):
-                details['transaction_id'] = candidate
-                print(f"✅ Found via {description}: {candidate}")
-                break
-    
-    # Pattern 2: PhonePe style (T + 20 digits)
-    if not details['transaction_id']:
-        match = re.search(r'\b(T\d{20,25})\b', text_upper)
-        if match:
-            details['transaction_id'] = match.group(1)
-            print(f"✅ Found PhonePe style: {details['transaction_id']}")
-    
-    # Pattern 3: Long numeric strings (12-20 digits)
-    if not details['transaction_id']:
-        for line in lines:
-            match = re.search(r'\b(\d{12,20})\b', line)
-            if match:
-                candidate = match.group(1)
-                if is_valid_transaction_id(candidate):
-                    details['transaction_id'] = candidate
-                    print(f"✅ Found numeric ID: {candidate}")
-                    break
-    
-    # Pattern 4: Alphanumeric (16-25 chars)
-    if not details['transaction_id']:
-        for line in lines:
-            match = re.search(r'\b([A-Z0-9]{16,25})\b', line)
-            if match:
-                candidate = match.group(1)
-                if is_valid_transaction_id(candidate):
-                    details['transaction_id'] = candidate
-                    print(f"✅ Found alphanumeric ID: {candidate}")
-                    break
-    
-    # Pattern 5: Any alphanumeric string (10-30 chars) - last resort
-    if not details['transaction_id']:
-        matches = re.findall(r'\b([A-Z0-9]{10,30})\b', text_upper)
-        for candidate in matches:
-            if is_valid_transaction_id(candidate):
-                details['transaction_id'] = candidate
-                print(f"✅ Found generic ID: {candidate}")
-                break
-    
-    # ============ AMOUNT ============
-    amount_patterns = [
-        (r'(?:PAID|AMOUNT|AMT|TOTAL)[:\s]*[₹RS\.\s]*([0-9,]+\.?\d{0,2})', 'Labeled amount'),
-        (r'[₹₨]\s*([0-9,]+\.?\d{0,2})', 'Rupee symbol'),
-        (r'RS\.?\s*([0-9,]+\.?\d{0,2})', 'Rs prefix'),
-        (r'INR\s*([0-9,]+\.?\d{0,2})', 'INR prefix'),
-        (r'\b([0-9,]{1,6}\.\d{2})\b', 'Decimal format'),
-    ]
-    
-    for pattern, description in amount_patterns:
-        match = re.search(pattern, text_upper)
-        if match:
-            amount_str = match.group(1).replace(',', '').strip()
-            try:
-                amount_val = float(amount_str)
-                if 1 <= amount_val <= 10000000:
-                    details['amount'] = amount_str
-                    print(f"✅ Found amount via {description}: ₹{amount_str}")
-                    break
-            except:
-                continue
-    
-    # ============ DATE ============
-    date_patterns = [
-        r'\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b',
-        r'\b(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})\b',
-        r'\b(\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2})\b',
-    ]
-    
-    for pattern in date_patterns:
-        match = re.search(pattern, text_upper)
-        if match:
-            details['date'] = match.group(1)
-            break
-    
-    # ============ TIME ============
-    time_match = re.search(r'(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)', text_upper)
-    if time_match:
-        details['time'] = time_match.group(1)
-    
-    # ============ UPI ID ============
-    upi_match = re.search(r'\b([a-z0-9._-]{3,}@[a-z]{3,})\b', text, re.IGNORECASE)
-    if upi_match:
-        upi = upi_match.group(1).lower()
-        if 'gmail' not in upi and 'yahoo' not in upi:
-            details['upi_id'] = upi
-    
-    # ============ PAYMENT METHOD ============
-    methods = {
-        'PHONEPE': 'PhonePe', 'PHONE PE': 'PhonePe',
-        'PAYTM': 'Paytm', 'GPAY': 'Google Pay',
-        'GOOGLE PAY': 'Google Pay', 'BHIM': 'BHIM UPI',
-        'UPI': 'UPI', 'CARD': 'Card'
-    }
-    
-    for key, value in methods.items():
-        if key in text_upper:
-            details['payment_method'] = value
-            break
-    
-    return details
+        return True
 
-def is_valid_transaction_id(text: str) -> bool:
-    """
-    Validate if a string is likely a transaction ID
-    """
-    if not text or len(text) < 8:
-        return False
-    
-    # Blacklist common false positives
-    blacklist = {
-        'SUCCESSFUL', 'SUCCESS', 'COMPLETED', 'PENDING', 'FAILED',
-        'TRANSACTION', 'PAYMENT', 'AMOUNT', 'BALANCE', 'ACCOUNT',
-        'CUSTOMER', 'MERCHANT', 'RECEIVER', 'SENDER', 'DETAILS',
-        'SUMMARY', 'RECEIPT', 'STATEMENT', 'CONFIRMED'
-    }
-    
-    if text in blacklist:
-        return False
-    
-    # Must have variety (not all same character)
-    if len(set(text)) < 5:
-        return False
-    
-    # Check for masked numbers (XXX)
-    if text.count('X') > len(text) * 0.4:
-        return False
-    
-    # Must be alphanumeric only
-    if not text.isalnum():
-        return False
-    
-    # Good signs for transaction IDs:
-    # 1. Mix of letters and numbers
-    has_letters = any(c.isalpha() for c in text)
-    has_numbers = any(c.isdigit() for c in text)
-    
-    # 2. Pure numeric with good length (12+)
-    if text.isdigit() and len(text) >= 12:
+    false_words = [
+        "PHONE", "EMAIL", "ADDRESS", "CUSTOMER", "MERCHANT", "BANK",
+        "ACCOUNT", "IFSC", "DETAILS", "PAYMENT", "AMOUNT", "DATE"
+    ]
+
+    t = text.upper()
+
+    if len(text) < 8 or len(text) > 50:
         return True
-    
-    # 3. Alphanumeric mix
-    if has_letters and has_numbers and len(text) >= 10:
+
+    if len(set(text)) < 3:   # repeated characters
         return True
-    
+
+    for w in false_words:
+        if w in t:
+            return True
+
     return False
 
+
+def extract_transaction_id(text: str) -> Optional[str]:
+    """Extract Transaction ID, prioritizing common app formats"""
+    if not text:
+        return None
+
+    text_upper = text.upper()
+
+    # Priority 1: Explicit labels
+    patterns = [
+        r'TRANSACTION\s*ID[\s:]*([A-Z0-9]{15,})',
+        r'TXN\s*ID[\s:]*([A-Z0-9]{15,})',
+        r'TRANS(?:ACTION)?\s*ID[\s:]*([A-Z0-9]{15,})',
+    ]
+
+    for p in patterns:
+        for m in re.finditer(p, text_upper):
+            v = m.group(1)
+            if not is_false_positive(v):
+                return v
+
+    # Priority 2
+    patterns_2 = [
+        r'(?:REF|REFERENCE)[\s:]*[#]?\s*([A-Z0-9]{12,})',
+        r'(?:ORDER|PAYMENT)[\s:]*[#]?\s*([A-Z0-9]{12,})',
+        r'(?:RECEIPT|RCPT)[\s:]*[#]?\s*([A-Z0-9]{12,})',
+        r'TXN[\s:]*[#]?\s*([A-Z0-9]{12,})',
+    ]
+
+    for p in patterns_2:
+        for m in re.finditer(p, text_upper):
+            v = m.group(1)
+            if not is_false_positive(v):
+                return v
+
+    # Priority 3: PhonePe style IDs
+    match = re.search(r'\bT[A-Z0-9]{18,}\b', text_upper)
+    if match:
+        v = match.group(0)
+        if not is_false_positive(v):
+            return v
+
+    # Priority 4: Generic fallback
+    for m in re.finditer(r'\b([A-Z0-9]{15,})\b', text_upper):
+        v = m.group(1)
+        # Skip pure 12-digit UTR
+        if re.match(r'^\d{12}$', v):
+            continue
+        if not is_false_positive(v):
+            return v
+
+    # Priority 5: UTR fallback
+    match = re.search(r'UTR[\s:]*[#]?\s*([0-9]{12})', text_upper)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+# --------------------------------------------------------
+# Payment detail extraction
+# --------------------------------------------------------
+
+def extract_payment_details(text: str) -> Dict[str, Optional[str]]:
+    res = {
+        "transaction_id": None,
+        "utr_number": None,
+        "amount": None,
+        "date": None,
+        "time": None,
+        "payment_method": None,
+        "status": None,
+        "upi_id": None,
+        "bank_name": None,
+    }
+
+    if not text:
+        return res
+
+    text_upper = text.upper()
+
+    res["transaction_id"] = extract_transaction_id(text)
+
+    # UTR
+    utr = re.search(r'UTR[\s:]*([0-9]{12})', text_upper)
+    if utr:
+        res["utr_number"] = utr.group(1)
+
+    # Amount
+    amount_patterns = [
+        r'(?:AMOUNT|AMT|TOTAL|PAID)[\s:]*[₹$]?\s*([0-9,]+\.?[0-9]*)',
+        r'[₹$]\s*([0-9,]+\.?[0-9]*)',
+        r'(?:RS|INR)[\s.]*([0-9,]+\.?[0-9]*)',
+    ]
+
+    for p in amount_patterns:
+        m = re.search(p, text_upper)
+        if m:
+            amt = m.group(1).replace(",", "")
+            res["amount"] = amt
+            break
+
+    # Date
+    date_patterns = [
+        r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b',
+        r'\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b',
+        r'\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{2,4})\b',
+    ]
+    for p in date_patterns:
+        m = re.search(p, text_upper)
+        if m:
+            res["date"] = m.group(1)
+            break
+
+    # Time
+    m = re.search(r'\b(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\b', text_upper)
+    if m:
+        res["time"] = m.group(1)
+
+    # UPI ID
+    m = re.search(r'([a-zA-Z0-9._-]+@[a-zA-Z]+)', text)
+    if m:
+        res["upi_id"] = m.group(1)
+
+    # Payment method
+    methods = [
+        "UPI", "CREDIT CARD", "DEBIT CARD", "NET BANKING", "WALLET",
+        "PAYTM", "PHONEPE", "GPAY", "GOOGLE PAY"
+    ]
+    for m in methods:
+        if m in text_upper:
+            res["payment_method"] = m
+            break
+
+    # Status
+    statuses = [
+        "SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID",
+        "FAILED", "PENDING", "DECLINED"
+    ]
+    for s in statuses:
+        if s in text_upper:
+            res["status"] = s
+            break
+
+    # Bank name
+    banks = [
+        "SBI", "HDFC", "ICICI", "AXIS", "KOTAK", "PNB",
+        "BOB", "CANARA", "UNION", "IDBI", "YES BANK"
+    ]
+    for b in banks:
+        if b in text_upper:
+            res["bank_name"] = b
+            break
+
+    return res
+
+
+# --------------------------------------------------------
+# Main extraction wrapper
+# --------------------------------------------------------
+
+def extract_payment_info_from_image(
+    image_file,
+    grobid_server: str = None,
+    use_tesseract: bool = True,
+    use_easyocr: bool = False
+) -> Dict[str, Optional[str]]:
+    text = ""
+
+    if use_easyocr:
+        try:
+            text = extract_text_from_image_easyocr(image_file)
+        except:
+            pass
+
+    if not text and use_tesseract:
+        if hasattr(image_file, "seek"):
+            image_file.seek(0)
+        text = extract_text_from_image_tesseract(image_file)
+
+    if not text:
+        return {
+            "transaction_id": None,
+            "amount": None,
+            "date": None,
+            "time": None,
+            "payment_method": None,
+            "status": None,
+            "upi_id": None,
+            "bank_name": None,
+            "raw_text": "",
+        }
+
+    details = extract_payment_details(text)
+    details["raw_text"] = text[:500]
+    return details
+
+
+# --------------------------------------------------------
+# Formatting
+# --------------------------------------------------------
+
 def format_payment_details(details: Dict) -> str:
-    """
-    Format payment details beautifully
-    """
     lines = []
-    
-    if details.get('transaction_id'):
-        lines.append(f"💳 Transaction ID: {details['transaction_id']}")
-    
-    if details.get('amount'):
+
+    if details.get("transaction_id"):
+        lines.append(f"🔖 Transaction ID: {details['transaction_id']}")
+
+    if details.get("utr_number"):
+        lines.append(f"🏦 UTR Number: {details['utr_number']}")
+
+    if details.get("amount"):
         lines.append(f"💰 Amount: ₹{details['amount']}")
-    
-    if details.get('payment_method'):
-        lines.append(f"📱 Method: {details['payment_method']}")
-    
-    if details.get('date'):
+
+    if details.get("status"):
+        lines.append(f"✅ Status: {details['status']}")
+
+    if details.get("date"):
         lines.append(f"📅 Date: {details['date']}")
-    
-    if details.get('time'):
-        lines.append(f"⏰ Time: {details['time']}")
-    
-    if details.get('upi_id'):
-        lines.append(f"🆔 UPI: {details['upi_id']}")
-    
-    return '\n'.join(lines) if lines else "⚠️ Could not extract payment details"
+
+    if details.get("time"):
+        lines.append(f"🕐 Time: {details['time']}")
+
+    if details.get("payment_method"):
+        lines.append(f"💳 Method: {details['payment_method']}")
+
+    if details.get("upi_id"):
+        lines.append(f"📱 UPI ID: {details['upi_id']}")
+
+    if details.get("bank_name"):
+        lines.append(f"🏦 Bank: {details['bank_name']}")
+
+    return "\n".join(lines) if lines else "No payment details extracted"
+
+
+# --------------------------------------------------------
+# Streamlit example
+# --------------------------------------------------------
+
+def streamlit_example():
+    import streamlit as st
+
+    st.title("Receipt Scanner with Auto-Fill")
+
+    if "form_data" not in st.session_state:
+        st.session_state.form_data = {
+            "transaction_id": "",
+            "amount": "",
+            "payment_date": "",
+            "payment_time": "",
+            "payment_method": "",
+            "payment_status": "",
+            "upi_id": "",
+            "bank_name": "",
+        }
+
+    uploaded_file = st.file_uploader("Upload receipt image", type=["png", "jpg", "jpeg"])
+
+    if uploaded_file:
+        st.image(uploaded_file)
+
+        if st.button("Extract Details"):
+            with st.spinner("Extracting..."):
+                details = extract_payment_info_from_image(uploaded_file)
+                st.success("Done!")
+                st.info(format_payment_details(details))
+
+    st.write("Form below:")
+
+    with st.form("payment_form"):
+        f = st.session_state.form_data
+
+        transaction_id = st.text_input("Transaction ID", value=f["transaction_id"])
+        amount = st.text_input("Amount", value=f["amount"])
+        payment_date = st.text_input("Payment Date", value=f["payment_date"])
+        payment_time = st.text_input("Payment Time", value=f["payment_time"])
+        payment_method = st.text_input("Payment Method", value=f["payment_method"])
+        payment_status = st.text_input("Status", value=f["payment_status"])
+        upi_id = st.text_input("UPI ID", value=f["upi_id"])
+        bank_name = st.text_input("Bank Name", value=f["bank_name"])
+
+        submitted = st.form_submit_button("Submit")
+
+        if submitted:
+            st.json({
+                "transaction_id": transaction_id,
+                "amount": amount,
+                "payment_date": payment_date,
+                "payment_time": payment_time,
+                "payment_method": payment_method,
+                "payment_status": payment_status,
+                "upi_id": upi_id,
+                "bank_name": bank_name,
+            })
+
+
+if __name__ == "__main__":
+    print("Module loaded OK — Streamlit mode available")
+
+
