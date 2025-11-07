@@ -1,147 +1,133 @@
+"""
+GROBID client for parsing PDF files
+"""
 import requests
-from pathlib import Path
-from typing import Optional
+import time
+from typing import Dict, List
 from xml.etree import ElementTree as ET
 
 
-def parse_pdf_with_grobid(pdf_path: str, grobid_server: str = "https://kermitt2-grobid.hf.space") -> Optional[str]:
+def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 3) -> str:
     """
-    Parse PDF using GROBID server and return TEI XML
+    Send PDF to GROBID server and get TEI XML response.
     
     Args:
-        pdf_path: Path to the PDF file
-        grobid_server: GROBID server URL (default: public HuggingFace instance)
+        pdf_path: Path to PDF file
+        grobid_server: GROBID server URL
+        max_retries: Number of retry attempts for timeout/503 errors
     
     Returns:
-        TEI XML string or None if parsing fails
+        TEI XML string
+    
+    Raises:
+        requests.exceptions.HTTPError: If request fails after all retries
     """
-    try:
-        endpoint = f"{grobid_server}/api/processFulltextDocument"
+    url = f"{grobid_server}/api/processFulltextDocument"
+    
+    for attempt in range(max_retries):
+        try:
+            with open(pdf_path, 'rb') as pdf_file:
+                files = {'input': pdf_file}
+                
+                # Extended timeout for cold start (free tier wakes up slowly)
+                timeout = 120 if attempt == 0 else 60
+                
+                response = requests.post(
+                    url, 
+                    files=files,
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                
+                return response.text
         
-        with open(pdf_path, 'rb') as f:
-            files = {'input': f}
-            response = requests.post(
-                endpoint,
-                files=files,
-                timeout=60
-            )
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 30  # 30s, 60s
+                print(f"Timeout on attempt {attempt + 1}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise Exception(
+                    f"Request timed out after {max_retries} attempts. "
+                    "The GROBID service may be sleeping or overloaded. "
+                    "Please wait a minute and try again."
+                )
         
-        if response.status_code == 200:
-            return response.text
-        else:
-            print(f"GROBID error: {response.status_code}")
-            return None
-            
-    except requests.exceptions.Timeout:
-        print("GROBID server timeout")
-        return None
-    except requests.exceptions.ConnectionError:
-        print("Cannot connect to GROBID server")
-        return None
-    except Exception as e:
-        print(f"GROBID parsing error: {e}")
-        return None
+        except requests.exceptions.HTTPError as e:
+            # Retry on 503 (service unavailable - waking up)
+            if e.response.status_code == 503 and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 20  # 20s, 40s
+                print(f"Service unavailable (503). Waiting {wait_time}s for service to wake up...")
+                time.sleep(wait_time)
+            else:
+                raise
+        
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to connect to GROBID server: {str(e)}")
 
 
-def extract_metadata_from_tei(tei_xml: str) -> dict:
+def extract_metadata_from_tei(tei_xml: str) -> Dict:
     """
-    Extract metadata from GROBID TEI XML
+    Extract metadata from TEI XML returned by GROBID.
     
     Args:
         tei_xml: TEI XML string from GROBID
     
     Returns:
-        Dictionary with extracted metadata
+        Dictionary containing extracted metadata
     """
+    # Parse XML
+    root = ET.fromstring(tei_xml)
+    
+    # Define namespace
+    ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+    
     metadata = {
-        'title': '',
+        'title': None,
         'authors': [],
-        'abstract': '',
+        'abstract': None,
         'keywords': [],
-        'affiliations': [],
+        'publication_date': None,
+        'body_text': None,
         'emails': []
     }
     
-    try:
-        root = ET.fromstring(tei_xml)
-        ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+    # Extract title
+    title_elem = root.find('.//tei:titleStmt/tei:title[@type="main"]', ns)
+    if title_elem is not None:
+        metadata['title'] = title_elem.text
+    
+    # Extract authors
+    authors = root.findall('.//tei:sourceDesc//tei:author', ns)
+    for author in authors:
+        forename = author.find('.//tei:forename', ns)
+        surname = author.find('.//tei:surname', ns)
         
-        # Extract title
-        title_elem = root.find('.//tei:titleStmt/tei:title[@type="main"]', ns)
-        if title_elem is not None and title_elem.text:
-            metadata['title'] = title_elem.text.strip()
-        
-        # Extract authors
-        for author in root.findall('.//tei:sourceDesc//tei:author', ns):
-            persName = author.find('.//tei:persName', ns)
-            if persName is not None:
-                forename = persName.find('.//tei:forename', ns)
-                surname = persName.find('.//tei:surname', ns)
-                
-                author_name = ""
-                if forename is not None and forename.text:
-                    author_name += forename.text.strip()
-                if surname is not None and surname.text:
-                    if author_name:
-                        author_name += " "
-                    author_name += surname.text.strip()
-                
-                if author_name:
-                    metadata['authors'].append(author_name)
-            
-            # Extract email
-            email_elem = author.find('.//tei:email', ns)
-            if email_elem is not None and email_elem.text:
-                metadata['emails'].append(email_elem.text.strip())
-        
-        # Extract abstract
-        abstract_elem = root.find('.//tei:abstract/tei:div/tei:p', ns)
-        if abstract_elem is not None and abstract_elem.text:
-            metadata['abstract'] = abstract_elem.text.strip()
-        elif abstract_elem is not None:
-            # Sometimes abstract has multiple elements
-            abstract_text = ''.join(abstract_elem.itertext()).strip()
-            if abstract_text:
-                metadata['abstract'] = abstract_text
-        
-        # Extract keywords
-        for keyword in root.findall('.//tei:keywords/tei:term', ns):
-            if keyword.text:
-                metadata['keywords'].append(keyword.text.strip())
-        
-        # Extract affiliations
-        for affiliation in root.findall('.//tei:affiliation', ns):
-            org_name = affiliation.find('.//tei:orgName', ns)
-            if org_name is not None and org_name.text:
-                metadata['affiliations'].append(org_name.text.strip())
-        
-    except Exception as e:
-        print(f"Error parsing TEI XML: {e}")
+        if forename is not None and surname is not None:
+            full_name = f"{forename.text} {surname.text}"
+            metadata['authors'].append(full_name)
+        elif surname is not None:
+            metadata['authors'].append(surname.text)
+    
+    # Extract abstract
+    abstract_elem = root.find('.//tei:profileDesc/tei:abstract/tei:div/tei:p', ns)
+    if abstract_elem is not None:
+        abstract_text = ''.join(abstract_elem.itertext())
+        metadata['abstract'] = abstract_text.strip()
+    
+    # Extract keywords
+    keywords = root.findall('.//tei:keywords/tei:term', ns)
+    metadata['keywords'] = [kw.text for kw in keywords if kw.text]
+    
+    # Extract publication date
+    date_elem = root.find('.//tei:publicationStmt/tei:date', ns)
+    if date_elem is not None:
+        metadata['publication_date'] = date_elem.get('when') or date_elem.text
+    
+    # Extract body text (first 1000 chars)
+    body_elem = root.find('.//tei:text/tei:body', ns)
+    if body_elem is not None:
+        body_text = ''.join(body_elem.itertext())
+        metadata['body_text'] = body_text.strip()[:1000]
     
     return metadata
-
-
-def extract_affiliations_from_tei(tei_xml: str) -> list:
-    """
-    Extract affiliations from TEI XML
-    
-    Args:
-        tei_xml: TEI XML string from GROBID
-    
-    Returns:
-        List of affiliation strings
-    """
-    try:
-        root = ET.fromstring(tei_xml)
-        ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
-        affiliations = []
-        
-        for affil in root.findall('.//tei:affiliation', ns):
-            org_name = affil.find('.//tei:orgName', ns)
-            if org_name is not None and org_name.text:
-                affiliations.append(org_name.text.strip())
-        
-        return list(set(affiliations))  # Remove duplicates
-    except Exception as e:
-        print(f"Error extracting affiliations: {e}")
-        return []
