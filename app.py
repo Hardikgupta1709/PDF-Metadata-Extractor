@@ -1053,68 +1053,131 @@ if uploaded_pdf and uploaded_image:
     col_extract1, col_extract2 = st.columns(2)
     
     with col_extract1:
-        st.markdown("#####  Extract Paper Metadata")
-        if st.button(" Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-                tmp.write(uploaded_pdf.getvalue())
-                tmp_path = tmp.name
-            
-            try:
-                with st.spinner(" Extracting metadata from PDF..."):
-                    tei_xml = parse_pdf_with_grobid(tmp_path, st.session_state.grobid_server)
-                    if not tei_xml:
-                        raise ValueError("GROBID returned empty response. Server might be down.")
-                    
-                    # Extract metadata
-                    metadata = extract_metadata_from_tei(tei_xml)
-                    
-                    # Extract affiliations (uses same TEI XML)
-                    metadata['affiliations'] = extract_affiliations_from_tei(tei_xml)
-                    
-                    # Extract emails from PDF text
-                    metadata['emails'] = find_emails(extract_full_text(tmp_path))
-                    
-                    # Store in session state
-                    st.session_state.metadata = metadata
-                    st.session_state.extracted = True
-                    
-                    st.success(" PDF metadata extracted!")
-                    
-                    # Show what was extracted
-                    with st.expander("📊 Extraction Summary", expanded=True):
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Authors", len(metadata.get('authors', [])))
-                        with col2:
-                            st.metric("Keywords", len(metadata.get('keywords', [])))
-                        with col3:
-                            st.metric("Emails", len(metadata.get('emails', [])))
-                        
-                        if metadata.get('title'):
-                            st.info(f" **Title:** {metadata['title'][:100]}...")
-                        if metadata.get('abstract'):
-                            st.info(f" **Abstract:** {metadata['abstract'][:150]}...")
-                    
-                    # AUTO-RERUN to show filled form
-                    st.rerun()
-                    
-            except Exception as e:
-                st.error(f" Extraction failed: {e}")
-                st.info("💡 You can fill the form manually")
+        st.markdown("##### 📄 Extract Paper Metadata")
+    if st.button("🤖 Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            tmp.write(uploaded_pdf.getvalue())
+            tmp_path = tmp.name
+        
+        try:
+            with st.spinner("🔄 Extracting metadata from PDF..."):
+                # Parse with GROBID
+                tei_xml = parse_pdf_with_grobid(tmp_path, st.session_state.grobid_server)
                 
-                # Set empty metadata for manual entry
-                if not st.session_state.metadata:
-                    st.session_state.metadata = {
-                        'title': '',
-                        'authors': [],
-                        'abstract': '',
-                        'keywords': [],
-                        'affiliations': [],
-                        'emails': []
-                    }
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+                if not tei_xml:
+                    raise ValueError("GROBID returned empty response. Server might be down.")
+                
+                # DEBUG: Show TEI XML structure (only for admin)
+                if st.session_state.admin_authenticated:
+                    with st.expander("🔍 Debug: TEI XML Preview"):
+                        st.text(tei_xml[:1000] + "...")
+                        if st.button("📥 Download Full TEI XML"):
+                            st.download_button(
+                                "Download TEI XML",
+                                tei_xml,
+                                f"debug_tei_{uploaded_pdf.name}.xml",
+                                "text/xml"
+                            )
+                
+                # Extract metadata with debug mode
+                metadata = extract_metadata_from_tei(tei_xml, debug=True)
+                
+                # Extract affiliations (uses same TEI XML)
+                from xml.etree import ElementTree as ET
+                root = ET.fromstring(tei_xml)
+                ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+                affiliations = root.findall('.//tei:affiliation', ns)
+                affil_list = []
+                for affil in affiliations:
+                    org_name = affil.find('.//tei:orgName', ns)
+                    if org_name is not None and org_name.text:
+                        affil_list.append(org_name.text.strip())
+                metadata['affiliations'] = list(set(affil_list))
+                
+                # Extract emails from PDF text
+                metadata['emails'] = find_emails(extract_full_text(tmp_path))
+                
+                # Store in session state
+                st.session_state.metadata = metadata
+                st.session_state.extracted = True
+                
+                st.success("✅ PDF metadata extracted!")
+                
+                # Show what was extracted
+                with st.expander("📊 Extraction Summary", expanded=True):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if metadata.get('title'):
+                            st.metric("Title", "✅ Found")
+                        else:
+                            st.metric("Title", "❌ Not Found")
+                    with col2:
+                        st.metric("Authors", len(metadata.get('authors', [])))
+                    with col3:
+                        st.metric("Keywords", len(metadata.get('keywords', [])))
+                    
+                    if metadata.get('title'):
+                        st.info(f"📄 **Title:** {metadata['title'][:150]}...")
+                    else:
+                        st.warning("⚠️ Title not found. You'll need to enter it manually.")
+                    
+                    if metadata.get('abstract'):
+                        st.info(f"📝 **Abstract:** {metadata['abstract'][:150]}...")
+                    else:
+                        st.warning("⚠️ Abstract not found. You'll need to enter it manually.")
+                    
+                    if metadata.get('authors'):
+                        st.info(f"👥 **Authors:** {', '.join(metadata['authors'][:3])}{'...' if len(metadata['authors']) > 3 else ''}")
+                
+                # Show debug info if title is missing (for admin only)
+                if not metadata.get('title') and st.session_state.admin_authenticated:
+                    with st.expander("🐛 Debug: Why title wasn't extracted"):
+                        st.warning("The GROBID parser couldn't find a title in the PDF.")
+                        st.info("""
+                        **Common reasons:**
+                        1. PDF is an image-based scan (not searchable text)
+                        2. Title is in an unusual format or location
+                        3. PDF has complex formatting or security
+                        
+                        **Solutions:**
+                        - Try a different PDF
+                        - Enter the title manually below
+                        - Check the TEI XML debug output above
+                        """)
+                
+                # AUTO-RERUN to show filled form
+                time.sleep(0.5)
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"❌ Extraction failed: {e}")
+            st.info("💡 You can fill the form manually")
+            
+            # Enhanced error info for admin
+            if st.session_state.admin_authenticated:
+                with st.expander("🐛 Error Details"):
+                    st.code(str(e))
+                    st.info("""
+                    **Troubleshooting:**
+                    1. Check GROBID server is running
+                    2. Try a different PDF
+                    3. Verify PDF is not password-protected
+                    4. Check internet connection to GROBID server
+                    """)
+            
+            # Set empty metadata for manual entry
+            if not st.session_state.metadata:
+                st.session_state.metadata = {
+                    'title': '',
+                    'authors': [],
+                    'abstract': '',
+                    'keywords': [],
+                    'affiliations': [],
+                    'emails': []
+                }
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
     
     with col_extract2:
         st.markdown("##### Extract Payment Details")
