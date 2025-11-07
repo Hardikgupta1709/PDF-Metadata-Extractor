@@ -1,29 +1,192 @@
+"""
+GROBID client for parsing PDF research papers
+"""
 import requests
+import time
 from xml.etree import ElementTree as ET
+from typing import Dict
 
 
-def parse_pdf_with_grobid(pdf_path: str, grobid_server: str) -> str:
+def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 3) -> str:
     """
-    Send PDF to GROBID server and get TEI XML response.
+    Send PDF to GROBID server and get TEI XML response with retry logic
     """
     url = f"{grobid_server}/api/processFulltextDocument"
     
-    with open(pdf_path, 'rb') as pdf_file:
-        files = {'input': pdf_file}
-        response = requests.post(url, files=files)
-        response.raise_for_status()
+    for attempt in range(max_retries):
+        try:
+            with open(pdf_path, 'rb') as pdf_file:
+                files = {'input': pdf_file}
+                
+                # Extended timeout for free tier (may need to wake up)
+                timeout = 120 if attempt == 0 else 60
+                
+                print(f"🔄 Attempt {attempt + 1}/{max_retries} - Sending PDF to GROBID...")
+                
+                response = requests.post(
+                    url, 
+                    files=files,
+                    timeout=timeout
+                )
+                
+                if response.status_code == 200:
+                    print("✅ GROBID processing successful")
+                    return response.text
+                else:
+                    print(f"⚠️ GROBID returned status {response.status_code}")
+                    response.raise_for_status()
         
-    return response.text
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 20
+                print(f"⏳ Timeout. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise Exception(
+                    "GROBID service timed out. The free service may be sleeping. "
+                    "Please wait a minute and try again, or fill the form manually."
+                )
+        
+        except requests.exceptions.HTTPError as e:
+            # Retry on 503 (service waking up)
+            if e.response.status_code == 503 and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 15
+                print(f"⏳ Service unavailable (waking up). Waiting {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise Exception(f"GROBID error: {str(e)}")
+        
+        except Exception as e:
+            raise Exception(f"Failed to connect to GROBID: {str(e)}")
+    
+    raise Exception("Failed to process PDF after all retries")
 
 
-def extract_metadata_from_tei(tei_xml: str) -> dict:
+def extract_metadata_from_tei(tei_xml: str) -> Dict:
     """
-    Extract metadata from GROBID's TEI XML output.
+    Enhanced metadata extraction from GROBID TEI XML
     """
     namespaces = {'tei': 'http://www.tei-c.org/ns/1.0'}
-    root = ET.fromstring(tei_xml)
     
-    metadata = {
+    try:
+        root = ET.fromstring(tei_xml)
+    except ET.ParseError as e:
+        print(f"❌ Failed to parse TEI XML: {e}")
+        return get_empty_metadata()
+    
+    metadata = get_empty_metadata()
+    
+    # ============ TITLE ============
+    # Priority 1: Main title from titleStmt
+    title_elem = root.find('.//tei:titleStmt/tei:title[@type="main"]', namespaces)
+    if title_elem is not None and title_elem.text:
+        metadata['title'] = clean_text(title_elem.text)
+        print(f"✅ Found title (main): {metadata['title'][:50]}...")
+    
+    # Priority 2: Any title in titleStmt
+    if not metadata['title']:
+        title_elem = root.find('.//tei:titleStmt/tei:title', namespaces)
+        if title_elem is not None and title_elem.text:
+            metadata['title'] = clean_text(title_elem.text)
+            print(f"✅ Found title (alt): {metadata['title'][:50]}...")
+    
+    # Priority 3: First heading in body
+    if not metadata['title']:
+        first_head = root.find('.//tei:body//tei:head', namespaces)
+        if first_head is not None and first_head.text:
+            metadata['title'] = clean_text(first_head.text)
+            print(f"✅ Found title (heading): {metadata['title'][:50]}...")
+    
+    # ============ AUTHORS ============
+    authors = root.findall('.//tei:sourceDesc//tei:author', namespaces)
+    
+    for author in authors:
+        name_parts = []
+        
+        # Try to get full name structure
+        forename = author.find('.//tei:forename[@type="first"]', namespaces)
+        if forename is None:
+            forename = author.find('.//tei:forename', namespaces)
+        
+        middle = author.find('.//tei:forename[@type="middle"]', namespaces)
+        surname = author.find('.//tei:surname', namespaces)
+        
+        if forename is not None and forename.text:
+            name_parts.append(forename.text.strip())
+        if middle is not None and middle.text:
+            name_parts.append(middle.text.strip())
+        if surname is not None and surname.text:
+            name_parts.append(surname.text.strip())
+        
+        if name_parts:
+            full_name = ' '.join(name_parts)
+            metadata['authors'].append(full_name)
+    
+    print(f"✅ Found {len(metadata['authors'])} authors")
+    
+    # ============ ABSTRACT ============
+    # Try multiple locations for abstract
+    abstract_locations = [
+        './/tei:profileDesc/tei:abstract/tei:div/tei:p',
+        './/tei:profileDesc/tei:abstract/tei:p',
+        './/tei:abstract/tei:div/tei:p',
+        './/tei:abstract/tei:p',
+        './/tei:abstract',
+    ]
+    
+    for location in abstract_locations:
+        abstract_elem = root.find(location, namespaces)
+        if abstract_elem is not None:
+            # Get all text including nested elements
+            abstract_text = ''.join(abstract_elem.itertext())
+            metadata['abstract'] = clean_text(abstract_text)
+            if metadata['abstract']:
+                print(f"✅ Found abstract ({len(metadata['abstract'])} chars)")
+                break
+    
+    # ============ KEYWORDS ============
+    # Try multiple locations for keywords
+    keyword_locations = [
+        './/tei:keywords//tei:term',
+        './/tei:profileDesc//tei:keywords//tei:term',
+    ]
+    
+    for location in keyword_locations:
+        keywords = root.findall(location, namespaces)
+        if keywords:
+            metadata['keywords'] = [
+                clean_text(kw.text) for kw in keywords 
+                if kw.text and len(kw.text.strip()) > 1
+            ]
+            if metadata['keywords']:
+                print(f"✅ Found {len(metadata['keywords'])} keywords")
+                break
+    
+    # ============ PUBLICATION DATE ============
+    date_elem = root.find('.//tei:publicationStmt/tei:date', namespaces)
+    if date_elem is not None:
+        metadata['publication_date'] = date_elem.get('when', '') or clean_text(date_elem.text or '')
+    
+    # ============ BODY TEXT (Preview) ============
+    body_paragraphs = root.findall('.//tei:body//tei:p', namespaces)
+    body_texts = []
+    
+    for p in body_paragraphs[:10]:  # First 10 paragraphs
+        paragraph_text = ''.join(p.itertext())
+        cleaned = clean_text(paragraph_text)
+        if cleaned and len(cleaned) > 20:  # Skip very short paragraphs
+            body_texts.append(cleaned)
+    
+    if body_texts:
+        full_body = ' '.join(body_texts)
+        metadata['body_text'] = full_body[:1500] + '...' if len(full_body) > 1500 else full_body
+    
+    return metadata
+
+
+def get_empty_metadata() -> Dict:
+    """Return empty metadata structure"""
+    return {
         'title': '',
         'authors': [],
         'abstract': '',
@@ -31,198 +194,17 @@ def extract_metadata_from_tei(tei_xml: str) -> dict:
         'publication_date': '',
         'body_text': ''
     }
-    
-    # Extract title from titleStmt
-    title_elem = root.find('.//tei:titleStmt/tei:title', namespaces)
-    if title_elem is not None and title_elem.text:
-        metadata['title'] = title_elem.text.strip()
-    
-    # If title is empty, try to get from first heading in body
-    if not metadata['title']:
-        first_head = root.find('.//tei:body//tei:head', namespaces)
-        if first_head is not None and first_head.text:
-            metadata['title'] = first_head.text.strip()
-    
-    # Extract authors
-    authors = root.findall('.//tei:sourceDesc//tei:author', namespaces)
-    for author in authors:
-        forename = author.find('.//tei:forename', namespaces)
-        surname = author.find('.//tei:surname', namespaces)
-        
-        name_parts = []
-        if forename is not None and forename.text:
-            name_parts.append(forename.text.strip())
-        if surname is not None and surname.text:
-            name_parts.append(surname.text.strip())
-        
-        if name_parts:
-            metadata['authors'].append(' '.join(name_parts))
-    
-    # Extract abstract
-    abstract_elem = root.find('.//tei:abstract', namespaces)
-    if abstract_elem is not None:
-        abstract_texts = []
-        for elem in abstract_elem.iter():
-            if elem.text:
-                abstract_texts.append(elem.text.strip())
-        metadata['abstract'] = ' '.join(abstract_texts)
-    
-    # Extract keywords
-    keywords = root.findall('.//tei:keywords//tei:term', namespaces)
-    metadata['keywords'] = [kw.text.strip() for kw in keywords if kw.text]
-    
-    # Extract publication date
-    date_elem = root.find('.//tei:publicationStmt/tei:date', namespaces)
-    if date_elem is not None:
-        metadata['publication_date'] = date_elem.get('when', '')
-    
-    # Extract body text (first 1000 characters for preview)
-    body_paragraphs = root.findall('.//tei:body//tei:p', namespaces)
-    body_texts = []
-    for p in body_paragraphs:
-        if p.text:
-            body_texts.append(p.text.strip())
-        for elem in p.iter():
-            if elem.text and elem != p:
-                body_texts.append(elem.text.strip())
-    
-    full_body = ' '.join(body_texts)
-    metadata['body_text'] = full_body[:1000] + '...' if len(full_body) > 1000 else full_body
-    
-    return metadata
 
 
-
-# """
-# GROBID client for parsing PDF files
-# """
-# import requests
-# import time
-# from typing import Dict, List
-# from xml.etree import ElementTree as ET
-
-
-# def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 3) -> str:
-#     """
-#     Send PDF to GROBID server and get TEI XML response.
+def clean_text(text: str) -> str:
+    """Clean and normalize extracted text"""
+    if not text:
+        return ''
     
-#     Args:
-#         pdf_path: Path to PDF file
-#         grobid_server: GROBID server URL
-#         max_retries: Number of retry attempts for timeout/503 errors
+    # Remove extra whitespace
+    text = ' '.join(text.split())
     
-#     Returns:
-#         TEI XML string
+    # Remove common artifacts
+    text = text.replace('\n', ' ').replace('\r', '')
     
-#     Raises:
-#         requests.exceptions.HTTPError: If request fails after all retries
-#     """
-#     url = f"{grobid_server}/api/processFulltextDocument"
-    
-#     for attempt in range(max_retries):
-#         try:
-#             with open(pdf_path, 'rb') as pdf_file:
-#                 files = {'input': pdf_file}
-                
-#                 # Extended timeout for cold start (free tier wakes up slowly)
-#                 timeout = 120 if attempt == 0 else 60
-                
-#                 response = requests.post(
-#                     url, 
-#                     files=files,
-#                     timeout=timeout
-#                 )
-#                 response.raise_for_status()
-                
-#                 return response.text
-        
-#         except requests.exceptions.Timeout:
-#             if attempt < max_retries - 1:
-#                 wait_time = (attempt + 1) * 30  # 30s, 60s
-#                 print(f"Timeout on attempt {attempt + 1}. Retrying in {wait_time}s...")
-#                 time.sleep(wait_time)
-#             else:
-#                 raise Exception(
-#                     f"Request timed out after {max_retries} attempts. "
-#                     "The GROBID service may be sleeping or overloaded. "
-#                     "Please wait a minute and try again."
-#                 )
-        
-#         except requests.exceptions.HTTPError as e:
-#             # Retry on 503 (service unavailable - waking up)
-#             if e.response.status_code == 503 and attempt < max_retries - 1:
-#                 wait_time = (attempt + 1) * 20  # 20s, 40s
-#                 print(f"Service unavailable (503). Waiting {wait_time}s for service to wake up...")
-#                 time.sleep(wait_time)
-#             else:
-#                 raise
-        
-#         except requests.exceptions.RequestException as e:
-#             raise Exception(f"Failed to connect to GROBID server: {str(e)}")
-
-
-# def extract_metadata_from_tei(tei_xml: str) -> Dict:
-#     """
-#     Extract metadata from TEI XML returned by GROBID.
-    
-#     Args:
-#         tei_xml: TEI XML string from GROBID
-    
-#     Returns:
-#         Dictionary containing extracted metadata
-#     """
-#     # Parse XML
-#     root = ET.fromstring(tei_xml)
-    
-#     # Define namespace
-#     ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
-    
-#     metadata = {
-#         'title': None,
-#         'authors': [],
-#         'abstract': None,
-#         'keywords': [],
-#         'publication_date': None,
-#         'body_text': None,
-#         'emails': []
-#     }
-    
-#     # Extract title
-#     title_elem = root.find('.//tei:titleStmt/tei:title[@type="main"]', ns)
-#     if title_elem is not None:
-#         metadata['title'] = title_elem.text
-    
-#     # Extract authors
-#     authors = root.findall('.//tei:sourceDesc//tei:author', ns)
-#     for author in authors:
-#         forename = author.find('.//tei:forename', ns)
-#         surname = author.find('.//tei:surname', ns)
-        
-#         if forename is not None and surname is not None:
-#             full_name = f"{forename.text} {surname.text}"
-#             metadata['authors'].append(full_name)
-#         elif surname is not None:
-#             metadata['authors'].append(surname.text)
-    
-#     # Extract abstract
-#     abstract_elem = root.find('.//tei:profileDesc/tei:abstract/tei:div/tei:p', ns)
-#     if abstract_elem is not None:
-#         abstract_text = ''.join(abstract_elem.itertext())
-#         metadata['abstract'] = abstract_text.strip()
-    
-#     # Extract keywords
-#     keywords = root.findall('.//tei:keywords/tei:term', ns)
-#     metadata['keywords'] = [kw.text for kw in keywords if kw.text]
-    
-#     # Extract publication date
-#     date_elem = root.find('.//tei:publicationStmt/tei:date', ns)
-#     if date_elem is not None:
-#         metadata['publication_date'] = date_elem.get('when') or date_elem.text
-    
-#     # Extract body text (first 1000 chars)
-#     body_elem = root.find('.//tei:text/tei:body', ns)
-#     if body_elem is not None:
-#         body_text = ''.join(body_elem.itertext())
-#         metadata['body_text'] = body_text.strip()[:1000]
-    
-#     return metadata
+    return text.strip()
