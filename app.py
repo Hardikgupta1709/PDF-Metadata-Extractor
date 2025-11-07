@@ -33,15 +33,36 @@ from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.credentials import Credentials
 
 try:
+    # Try importing from parser directory (without src prefix)
     from src.parser.image_extractor import extract_payment_info_from_image, format_payment_details
     from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
     from src.parser.email_extractor import extract_full_text, find_emails
     print("✅ All local modules imported successfully")
 except ImportError as e:
-    st.error(f"**Failed to import local modules!** Details: {e}")
-    st.warning("📦 Make sure all dependencies are installed")
-    st.info("💡 You can still use manual form filling")
-
+    try:
+        # Fallback: try with src prefix
+        from src.parser.image_extractor import extract_payment_info_from_image, format_payment_details
+        from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
+        from src.parser.email_extractor import extract_full_text, find_emails
+        print("✅ All local modules imported successfully (via src)")
+    except ImportError as e2:
+        st.error(f"**Failed to import local modules!** Details: {e2}")
+        st.warning("📦 Make sure all dependencies are installed")
+        st.info("💡 You can still use manual form filling")
+        # Set dummy functions to prevent crashes
+        def extract_payment_info_from_image(*args, **kwargs):
+            return {}
+        def format_payment_details(details):
+            return "Payment extraction unavailable"
+        def parse_pdf_with_grobid(*args, **kwargs):
+            return None
+        def extract_metadata_from_tei(*args, **kwargs):
+            return {}
+        def extract_full_text(*args, **kwargs):
+            return ""
+        def find_emails(*args, **kwargs):
+            return []
+        
 # ----------------- ENVIRONMENT DETECTION (Must be before CONFIG) -----------------
 def is_render_environment():
     """Detect if running on Render"""
@@ -975,14 +996,14 @@ GOOGLE_DRIVE_FOLDER_ID: {'✓ Set' if GOOGLE_DRIVE_FOLDER_ID else '✗ Missing'}
         )
 
 # ----------------- MAIN UI -----------------
-st.title("📝 Research Paper Submission")
+st.title("Trust-NET Paper Submission")
 st.markdown("Upload your paper and payment receipt")
 
 # OAuth UI
 if st.session_state.show_oauth_ui and not st.session_state.google_creds:
     st.markdown("---")
     get_oauth_credentials_local(interactive=True)
-    if st.button("❌ Cancel Authorization", key="cancel_oauth"):
+    if st.button("Cancel Authorization", key="cancel_oauth"):
         st.session_state.show_oauth_ui = False
         if 'oauth_flow' in st.session_state:
             del st.session_state.oauth_flow
@@ -994,7 +1015,7 @@ if st.session_state.show_oauth_ui and not st.session_state.google_creds:
     st.stop()
 
 if st.session_state.show_success:
-    st.success("🎉 **Submission successful!**")
+    st.success(" **Submission successful!**")
     st.info("✅ All details saved. Admin will review shortly.")
     if st.button("➕ Submit Another"):
         st.session_state.show_success = False
@@ -1005,56 +1026,83 @@ if st.session_state.show_success:
     st.stop()
 
 st.markdown("---")
-st.subheader("📤 Step 1: Upload Files")
+st.subheader(" Step 1: Upload Files")
 
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("#### 📄 Research Paper")
+    st.markdown("####  Research Paper")
     uploaded_pdf = st.file_uploader("Upload PDF *", type=['pdf'], key="pdf")
 
 with col2:
-    st.markdown("#### 🧾 Transaction Receipt")
+    st.markdown("#### Transaction Receipt")
     uploaded_image = st.file_uploader("Upload receipt *", type=['jpg','jpeg','png','pdf'], key="img")
 
 if uploaded_pdf:
-    col1.success(f"✅ {uploaded_pdf.name}")
+    col1.success(f" {uploaded_pdf.name}")
 
 if uploaded_image:
-    col2.success(f"✅ {uploaded_image.name}")
+    col2.success(f"{uploaded_image.name}")
     if uploaded_image.type.startswith("image"):
         col2.image(uploaded_image, width=200)
 
 # EXTRACTION LOGIC
 if uploaded_pdf and uploaded_image:
     st.markdown("---")
-    st.subheader("🔍 Step 2: Extract Information")
+    st.subheader(" Step 2: Extract Information")
     
     col_extract1, col_extract2 = st.columns(2)
     
     with col_extract1:
-        st.markdown("##### 📄 Extract Paper Metadata")
-        if st.button("🤖 Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
+        st.markdown("#####  Extract Paper Metadata")
+        if st.button(" Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
                 tmp.write(uploaded_pdf.getvalue())
                 tmp_path = tmp.name
             
             try:
-                with st.spinner("🔄 Extracting metadata from PDF..."):
+                with st.spinner(" Extracting metadata from PDF..."):
                     tei_xml = parse_pdf_with_grobid(tmp_path, st.session_state.grobid_server)
                     if not tei_xml:
                         raise ValueError("GROBID returned empty response. Server might be down.")
                     
+                    # Extract metadata
                     metadata = extract_metadata_from_tei(tei_xml)
+                    
+                    # Extract affiliations (uses same TEI XML)
                     metadata['affiliations'] = extract_affiliations_from_tei(tei_xml)
+                    
+                    # Extract emails from PDF text
                     metadata['emails'] = find_emails(extract_full_text(tmp_path))
                     
+                    # Store in session state
                     st.session_state.metadata = metadata
                     st.session_state.extracted = True
-                    st.success("✅ PDF metadata extracted!")
+                    
+                    st.success(" PDF metadata extracted!")
+                    
+                    # Show what was extracted
+                    with st.expander("📊 Extraction Summary", expanded=True):
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Authors", len(metadata.get('authors', [])))
+                        with col2:
+                            st.metric("Keywords", len(metadata.get('keywords', [])))
+                        with col3:
+                            st.metric("Emails", len(metadata.get('emails', [])))
+                        
+                        if metadata.get('title'):
+                            st.info(f" **Title:** {metadata['title'][:100]}...")
+                        if metadata.get('abstract'):
+                            st.info(f" **Abstract:** {metadata['abstract'][:150]}...")
+                    
+                    # AUTO-RERUN to show filled form
                     st.rerun()
+                    
             except Exception as e:
-                st.error(f"❌ Extraction failed: {e}")
+                st.error(f" Extraction failed: {e}")
                 st.info("💡 You can fill the form manually")
+                
+                # Set empty metadata for manual entry
                 if not st.session_state.metadata:
                     st.session_state.metadata = {
                         'title': '',
@@ -1069,10 +1117,10 @@ if uploaded_pdf and uploaded_image:
                     os.unlink(tmp_path)
     
     with col_extract2:
-        st.markdown("##### 💳 Extract Payment Details")
-        if st.button("🔍 Extract from Receipt", type="primary", use_container_width=True, key="extract_payment"):
+        st.markdown("##### Extract Payment Details")
+        if st.button(" Extract from Receipt", type="primary", use_container_width=True, key="extract_payment"):
             try:
-                with st.spinner("🔄 Extracting payment info..."):
+                with st.spinner(" Extracting payment info..."):
                     uploaded_image.seek(0)
                     payment_details = extract_payment_info_from_image(
                         uploaded_image,
@@ -1082,95 +1130,178 @@ if uploaded_pdf and uploaded_image:
                     st.session_state.payment_details = payment_details
                     
                     if payment_details.get("transaction_id"):
-                        st.success("✅ Payment details extracted!")
+                        st.success(" Payment details extracted!")
                         st.info(format_payment_details(payment_details))
+                        
+                        # AUTO-RERUN to show filled form
+                        st.rerun()
                     else:
-                        st.warning("⚠️ Could not extract all details.")
+                        st.warning(" Could not extract all details.")
                         if payment_details.get("raw_text"):
                             with st.expander("🔍 View Extracted Text"):
                                 st.text(payment_details["raw_text"])
             except Exception as e:
-                st.error(f"❌ Extraction failed: {e}")
+                st.error(f" Extraction failed: {e}")
                 st.info("💡 You can enter payment details manually")
     
+    # Show extraction status
     if st.session_state.extracted or st.session_state.payment_details:
         st.markdown("---")
         status_col1, status_col2 = st.columns(2)
         with status_col1:
             if st.session_state.extracted:
-                st.success("✅ PDF metadata extracted")
+                st.success(" PDF metadata extracted - Form auto-filled below!")
             else:
-                st.info("⏭️ PDF extraction pending (optional)")
+                st.info(" PDF extraction pending (optional)")
         with status_col2:
             if st.session_state.payment_details.get("transaction_id"):
-                st.success("✅ Payment details extracted")
+                st.success("Payment details extracted - Form auto-filled below!")
             else:
                 st.info("⏭️ Payment extraction pending (optional)")
 
     # FORM SECTION
     st.markdown("---")
-    st.subheader("📝 Step 3: Complete Submission Form")
+    st.subheader("Step 3: Complete Submission Form")
     
     if st.session_state.extracted:
-        st.info("✅ Form auto-filled! Please review and complete all fields.")
+        st.success("Form auto-filled with extracted data! Please review and complete any missing fields.")
     else:
         st.info("💡 Fill out the form manually or use auto-extraction above")
     
+    # Get metadata from session state (will be populated after extraction)
     metadata = st.session_state.get('metadata') or {}
     payment_details = st.session_state.get('payment_details') or {}
 
     with st.form("submission_form", clear_on_submit=False):
-        st.markdown("#### 📄 Paper Details")
-        title = st.text_input("Title *", value=metadata.get('title', ''))
+        st.markdown("####  Paper Details")
+        
+        # AUTO-FILLED: Title
+        title = st.text_input(
+            "Title *", 
+            value=metadata.get('title', ''),
+            help="Extracted from PDF" if metadata.get('title') else "Enter paper title"
+        )
+        
+        # AUTO-FILLED: Authors (convert list to semicolon-separated string)
+        authors_value = ""
+        if metadata.get('authors'):
+            if isinstance(metadata['authors'], list):
+                authors_value = "; ".join(metadata['authors'])
+            else:
+                authors_value = metadata['authors']
+        
         authors = st.text_area(
             "Authors (semicolon separated) *", 
-            value="; ".join(metadata.get('authors', [])) if metadata.get('authors') else '', 
-            height=80
+            value=authors_value,
+            height=80,
+            help="Extracted from PDF" if authors_value else "Enter authors separated by semicolons"
         )
 
-        st.markdown("#### 📧 Contact Information")
+        st.markdown("#### Contact Information")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
+            # AUTO-FILLED: Email (use first email from list)
             emails_list = metadata.get('emails', [])
             default_email = emails_list[0] if emails_list else ""
-            email = st.text_input("Corresponding Email *", value=default_email)
+            
+            email = st.text_input(
+                "Corresponding Email *", 
+                value=default_email,
+                help="Extracted from PDF" if default_email else "Enter corresponding author email"
+            )
+        
         with col_c2:
+            # Display all found emails
             all_emails_display = "; ".join(emails_list) if emails_list else ""
-            all_emails = st.text_area("All Found Emails", value=all_emails_display, height=80, disabled=True)
+            all_emails = st.text_area(
+                "All Found Emails", 
+                value=all_emails_display, 
+                height=80, 
+                disabled=True,
+                help="All emails found in the PDF"
+            )
 
+        # AUTO-FILLED: Affiliations (convert list to semicolon-separated string)
+        affiliations_value = ""
+        if metadata.get('affiliations'):
+            if isinstance(metadata['affiliations'], list):
+                affiliations_value = "; ".join(metadata['affiliations'])
+            else:
+                affiliations_value = metadata['affiliations']
+        
         affiliations = st.text_area(
             "Affiliations (semicolon separated) *", 
-            value="; ".join(metadata.get('affiliations', [])) if metadata.get('affiliations') else '', 
-            height=80
+            value=affiliations_value,
+            height=80,
+            help="Extracted from PDF" if affiliations_value else "Enter affiliations separated by semicolons"
         )
 
-        st.markdown("#### 💳 Payment Information")
+        st.markdown("####  Payment Information")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            transaction_id = st.text_input("Transaction ID *", value=payment_details.get('transaction_id', ''))
-            amount = st.text_input("Amount Paid (₹) *", value=payment_details.get('amount', ''))
+            # AUTO-FILLED: Transaction ID
+            transaction_id = st.text_input(
+                "Transaction ID *", 
+                value=payment_details.get('transaction_id', ''),
+                help="Extracted from receipt" if payment_details.get('transaction_id') else "Enter transaction ID"
+            )
+            
+            # AUTO-FILLED: Amount
+            amount = st.text_input(
+                "Amount Paid (₹) *", 
+                value=payment_details.get('amount', ''),
+                help="Extracted from receipt" if payment_details.get('amount') else "Enter amount paid"
+            )
+        
         with col_t2:
+            # AUTO-FILLED: Payment Method
             payment_method = st.text_input(
                 "Payment Method", 
                 value=payment_details.get('payment_method', ''), 
-                placeholder="UPI/Card/Net Banking"
+                placeholder="UPI/Card/Net Banking",
+                help="Extracted from receipt" if payment_details.get('payment_method') else "Enter payment method"
             )
+            
+            # AUTO-FILLED: Payment Date
             payment_date = st.text_input(
                 "Payment Date", 
                 value=payment_details.get('date', ''), 
-                placeholder="DD-MM-YYYY"
+                placeholder="DD-MM-YYYY",
+                help="Extracted from receipt" if payment_details.get('date') else "Enter payment date"
             )
         
-        upi_id = st.text_input("UPI ID (if applicable)", value=payment_details.get('upi_id', ''))
-
-        st.markdown("#### 📖 Abstract & Keywords")
-        abstract = st.text_area("Abstract *", value=metadata.get('abstract', ''), height=150)
-        keywords = st.text_input(
-            "Keywords (comma separated) *", 
-            value=", ".join(metadata.get('keywords', [])) if metadata.get('keywords') else ''
+        # AUTO-FILLED: UPI ID
+        upi_id = st.text_input(
+            "UPI ID (if applicable)", 
+            value=payment_details.get('upi_id', ''),
+            help="Extracted from receipt" if payment_details.get('upi_id') else "Enter UPI ID if applicable"
         )
 
-        st.markdown("#### 🏷️ Classification")
+        st.markdown("#### Abstract & Keywords")
+        
+        # AUTO-FILLED: Abstract
+        abstract = st.text_area(
+            "Abstract *", 
+            value=metadata.get('abstract', ''), 
+            height=150,
+            help="Extracted from PDF" if metadata.get('abstract') else "Enter paper abstract"
+        )
+        
+        # AUTO-FILLED: Keywords (convert list to comma-separated string)
+        keywords_value = ""
+        if metadata.get('keywords'):
+            if isinstance(metadata['keywords'], list):
+                keywords_value = ", ".join(metadata['keywords'])
+            else:
+                keywords_value = metadata['keywords']
+        
+        keywords = st.text_input(
+            "Keywords (comma separated) *", 
+            value=keywords_value,
+            help="Extracted from PDF" if keywords_value else "Enter keywords separated by commas"
+        )
+
+        st.markdown("####  Classification")
         col_cl1, col_cl2 = st.columns(2)
         with col_cl1:
             area = st.selectbox(
@@ -1207,14 +1338,12 @@ if uploaded_pdf and uploaded_image:
         comments = st.text_area("Additional Comments (optional)", height=80)
         
         st.markdown("---")
-        consent = st.checkbox("✅ I confirm all information is accurate and I have the right to submit this work *")
+        consent = st.checkbox("I confirm all information is accurate and I have the right to submit this work *")
         
         st.markdown("")
         col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
         with col_submit2:
             submitted = st.form_submit_button("🚀 **SUBMIT PAPER**", type="primary", use_container_width=True)
-
-        if submitted:
             errors = []
             if not title or not title.strip(): 
                 errors.append("Title")
@@ -1240,7 +1369,7 @@ if uploaded_pdf and uploaded_image:
                 errors.append("Consent checkbox")
 
             if errors:
-                st.error(f"❌ **Please complete the following required fields:** {', '.join(errors)}")
+                st.error(f" **Please complete the following required fields:** {', '.join(errors)}")
             else:
                 submission_id = f"SUB{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 
@@ -1269,7 +1398,7 @@ if uploaded_pdf and uploaded_image:
                     'upi_id': safe_strip(upi_id)
                 }
 
-                with st.spinner("💾 Saving files locally..."):
+                with st.spinner("Saving files locally..."):
                     local_data = save_files_locally(uploaded_pdf, uploaded_image, submission_id, authors.strip())
 
                 if local_data:
@@ -1277,9 +1406,9 @@ if uploaded_pdf and uploaded_image:
                         'pdf_path': local_data['pdf_path'],
                         'image_path': local_data['image_path']
                     })
-                    st.success("✅ Files saved locally")
+                    st.success(" Files saved locally")
                 else:
-                    st.error("❌ Could not save files locally")
+                    st.error(" Could not save files locally")
                     st.stop()
                 
                 google_creds = get_google_credentials(interactive=False)
@@ -1299,7 +1428,7 @@ if uploaded_pdf and uploaded_image:
                 elif GOOGLE_DRIVE_ENABLED:
                     st.warning("⚠️ Google not connected. Files saved locally only.")
                     if is_production():
-                        st.error("🚨 CRITICAL: Google Drive is not configured on Render!")
+                        st.error(" CRITICAL: Google Drive is not configured on Render!")
                         st.info("💡 Files are saved temporarily but will be LOST on restart")
                     else:
                         st.info("💡 Admin can connect Google Drive from the sidebar")
