@@ -2,16 +2,48 @@
 Extract payment details from receipt images using Tesseract OCR (lightweight)
 """
 import re
+import os
+import platform
 from PIL import Image, ImageEnhance, ImageFilter
-import pytesseract
 from typing import Dict, Optional
 import numpy as np
-import cv2
+
+# Configure Tesseract based on platform
+try:
+    import pytesseract
+    
+    # Set Tesseract path for different environments
+    if platform.system() == 'Linux':
+        tesseract_cmd = '/usr/bin/tesseract'
+        if os.path.exists(tesseract_cmd):
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+            print(f"✅ Tesseract found at: {tesseract_cmd}")
+        else:
+            print("⚠️ Tesseract not found - OCR may not work")
+    
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    print("⚠️ pytesseract not installed - payment extraction disabled")
+    TESSERACT_AVAILABLE = False
+
+# Optional: OpenCV for advanced preprocessing
+try:
+    import cv2
+    CV2_AVAILABLE = True
+    print("✅ OpenCV available for advanced preprocessing")
+except ImportError:
+    CV2_AVAILABLE = False
+    print("ℹ️ OpenCV not available - using basic preprocessing only")
 
 def preprocess_image_advanced(image):
     """
     Advanced image preprocessing for better OCR accuracy
     """
+    if not CV2_AVAILABLE:
+        # Fallback to PIL-only preprocessing
+        gray = image.convert('L')
+        return [np.array(gray)]
+    
     # Convert PIL to OpenCV format
     img_array = np.array(image)
     
@@ -43,9 +75,12 @@ def preprocess_image_advanced(image):
     processed_images.append(enhanced)
     
     # 5. Denoise + threshold
-    denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-    _, denoised_thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    processed_images.append(denoised_thresh)
+    try:
+        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        _, denoised_thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        processed_images.append(denoised_thresh)
+    except Exception as e:
+        print(f"⚠️ Denoising failed: {e}")
     
     return processed_images
 
@@ -53,6 +88,10 @@ def extract_text_tesseract_enhanced(image_file) -> str:
     """
     Extract text using Tesseract with multiple preprocessing techniques
     """
+    if not TESSERACT_AVAILABLE:
+        print("❌ Tesseract not available")
+        return ""
+    
     try:
         # Open image
         image = Image.open(image_file)
@@ -65,25 +104,29 @@ def extract_text_tesseract_enhanced(image_file) -> str:
         all_texts = []
         
         # Method 1: Simple PIL enhancement
-        enhancer = ImageEnhance.Contrast(image)
-        enhanced = enhancer.enhance(2.5)
-        enhancer = ImageEnhance.Sharpness(enhanced)
-        enhanced = enhancer.enhance(2.0)
-        
-        text1 = pytesseract.image_to_string(enhanced, config='--oem 3 --psm 6')
-        all_texts.append(text1)
+        try:
+            enhancer = ImageEnhance.Contrast(image)
+            enhanced = enhancer.enhance(2.5)
+            enhancer = ImageEnhance.Sharpness(enhanced)
+            enhanced = enhancer.enhance(2.0)
+            
+            text1 = pytesseract.image_to_string(enhanced, config='--oem 3 --psm 6')
+            all_texts.append(text1)
+        except Exception as e:
+            print(f"⚠️ PIL enhancement failed: {e}")
         
         # Method 2: Advanced OpenCV preprocessing
-        try:
-            processed_images = preprocess_image_advanced(image)
-            
-            for idx, processed in enumerate(processed_images):
-                # Convert back to PIL for pytesseract
-                pil_img = Image.fromarray(processed)
-                text = pytesseract.image_to_string(pil_img, config='--oem 3 --psm 6')
-                all_texts.append(text)
-        except Exception as e:
-            print(f"⚠️ OpenCV preprocessing failed: {e}")
+        if CV2_AVAILABLE:
+            try:
+                processed_images = preprocess_image_advanced(image)
+                
+                for idx, processed in enumerate(processed_images):
+                    # Convert back to PIL for pytesseract
+                    pil_img = Image.fromarray(processed)
+                    text = pytesseract.image_to_string(pil_img, config='--oem 3 --psm 6')
+                    all_texts.append(text)
+            except Exception as e:
+                print(f"⚠️ OpenCV preprocessing failed: {e}")
         
         # Method 3: Try different PSM modes on enhanced image
         for psm in [3, 4, 11]:
@@ -113,6 +156,20 @@ def extract_payment_info_from_image(image_file, grobid_server: str = None,
     """
     Extract payment information using Tesseract only (lightweight)
     """
+    if not TESSERACT_AVAILABLE:
+        print("❌ Tesseract not available - cannot extract payment info")
+        return {
+            'transaction_id': '',
+            'amount': '',
+            'date': '',
+            'time': '',
+            'payment_method': '',
+            'status': '',
+            'upi_id': '',
+            'bank_name': '',
+            'raw_text': 'Tesseract OCR not available'
+        }
+    
     print("🔍 Starting payment extraction with Tesseract...")
     
     # Extract text using enhanced Tesseract
