@@ -9,8 +9,14 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     poppler-utils \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libfontconfig1 \
+    libice6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
