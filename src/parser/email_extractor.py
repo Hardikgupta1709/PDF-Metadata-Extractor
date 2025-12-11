@@ -1,6 +1,5 @@
 """
 Email extractor for PDF research papers
-Uses PyMuPDF (fitz) for better text extraction
 """
 import re
 from typing import List
@@ -28,7 +27,7 @@ def extract_full_text(pdf_path: str) -> str:
     Returns:
         A single string containing all text from the PDF.
     """
-    # Try PyMuPDF first (better extraction)
+    #  PyMuPDF  
     if PYMUPDF_AVAILABLE:
         try:
             full_text = ""
@@ -40,7 +39,7 @@ def extract_full_text(pdf_path: str) -> str:
         except Exception as e:
             print(f"⚠️ Error extracting text with PyMuPDF: {e}")
     
-    # Fallback to PyPDF2
+
     if PYPDF2_AVAILABLE:
         try:
             full_text = ""
@@ -71,7 +70,7 @@ def find_emails(text: str) -> List[str]:
     if not text:
         return []
     
-    # Robust email regex pattern
+    #  email regex pattern
     # Matches: username@domain.tld
     email_regex = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     
