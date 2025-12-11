@@ -1,5 +1,5 @@
 """
-Extract transaction IDs and payment details from receipt images with auto-fill
+Extract transaction IDs and payment details from receipt images 
 """
 import re
 import requests
@@ -8,10 +8,7 @@ import io
 import pytesseract
 from typing import Dict, Optional
 
-
-# --------------------------------------------------------
-# OCR utilities
-# --------------------------------------------------------
+# OCR 
 
 def extract_text_from_image_tesseract(image_file) -> str:
     """Extract text from image using Tesseract OCR"""
@@ -75,9 +72,7 @@ def extract_text_from_image_easyocr(image_file) -> str:
         return ""
 
 
-# --------------------------------------------------------
 # Transaction extraction
-# --------------------------------------------------------
 
 def is_false_positive(text: str) -> bool:
     """Reject non-ID tokens"""
@@ -94,7 +89,7 @@ def is_false_positive(text: str) -> bool:
     if len(text) < 8 or len(text) > 50:
         return True
 
-    if len(set(text)) < 3:   # repeated characters
+    if len(set(text)) < 3:   
         return True
 
     for w in false_words:
@@ -111,7 +106,6 @@ def extract_transaction_id(text: str) -> Optional[str]:
 
     text_upper = text.upper()
 
-    # Priority 1: Explicit labels
     patterns = [
         r'TRANSACTION\s*ID[\s:]*([A-Z0-9]{15,})',
         r'TXN\s*ID[\s:]*([A-Z0-9]{15,})',
@@ -124,7 +118,7 @@ def extract_transaction_id(text: str) -> Optional[str]:
             if not is_false_positive(v):
                 return v
 
-    # Priority 2
+
     patterns_2 = [
         r'(?:REF|REFERENCE)[\s:]*[#]?\s*([A-Z0-9]{12,})',
         r'(?:ORDER|PAYMENT)[\s:]*[#]?\s*([A-Z0-9]{12,})',
@@ -138,23 +132,23 @@ def extract_transaction_id(text: str) -> Optional[str]:
             if not is_false_positive(v):
                 return v
 
-    # Priority 3: PhonePe style IDs
+
     match = re.search(r'\bT[A-Z0-9]{18,}\b', text_upper)
     if match:
         v = match.group(0)
         if not is_false_positive(v):
             return v
 
-    # Priority 4: Generic fallback
+
     for m in re.finditer(r'\b([A-Z0-9]{15,})\b', text_upper):
         v = m.group(1)
-        # Skip pure 12-digit UTR
+
         if re.match(r'^\d{12}$', v):
             continue
         if not is_false_positive(v):
             return v
 
-    # Priority 5: UTR fallback
+
     match = re.search(r'UTR[\s:]*[#]?\s*([0-9]{12})', text_upper)
     if match:
         return match.group(1)
@@ -162,9 +156,9 @@ def extract_transaction_id(text: str) -> Optional[str]:
     return None
 
 
-# --------------------------------------------------------
+
 # Payment detail extraction
-# --------------------------------------------------------
+
 
 def extract_payment_details(text: str) -> Dict[str, Optional[str]]:
     res = {
@@ -186,12 +180,12 @@ def extract_payment_details(text: str) -> Dict[str, Optional[str]]:
 
     res["transaction_id"] = extract_transaction_id(text)
 
-    # UTR
+
     utr = re.search(r'UTR[\s:]*([0-9]{12})', text_upper)
     if utr:
         res["utr_number"] = utr.group(1)
 
-    # Amount
+
     amount_patterns = [
         r'(?:AMOUNT|AMT|TOTAL|PAID)[\s:]*[₹$]?\s*([0-9,]+\.?[0-9]*)',
         r'[₹$]\s*([0-9,]+\.?[0-9]*)',
@@ -205,7 +199,7 @@ def extract_payment_details(text: str) -> Dict[str, Optional[str]]:
             res["amount"] = amt
             break
 
-    # Date
+
     date_patterns = [
         r'\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b',
         r'\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b',
@@ -259,10 +253,7 @@ def extract_payment_details(text: str) -> Dict[str, Optional[str]]:
 
     return res
 
-
-# --------------------------------------------------------
 # Main extraction wrapper
-# --------------------------------------------------------
 
 def extract_payment_info_from_image(
     image_file,
@@ -300,47 +291,41 @@ def extract_payment_info_from_image(
     details["raw_text"] = text[:500]
     return details
 
-
-# --------------------------------------------------------
 # Formatting
-# --------------------------------------------------------
 
 def format_payment_details(details: Dict) -> str:
     lines = []
 
     if details.get("transaction_id"):
-        lines.append(f"🔖 Transaction ID: {details['transaction_id']}")
+        lines.append(f"Transaction ID: {details['transaction_id']}")
 
     if details.get("utr_number"):
-        lines.append(f"🏦 UTR Number: {details['utr_number']}")
+        lines.append(f"UTR Number: {details['utr_number']}")
 
     if details.get("amount"):
-        lines.append(f"💰 Amount: ₹{details['amount']}")
+        lines.append(f"Amount: ₹{details['amount']}")
 
     if details.get("status"):
-        lines.append(f"✅ Status: {details['status']}")
+        lines.append(f"Status: {details['status']}")
 
     if details.get("date"):
-        lines.append(f"📅 Date: {details['date']}")
+        lines.append(f"Date: {details['date']}")
 
     if details.get("time"):
-        lines.append(f"🕐 Time: {details['time']}")
+        lines.append(f" Time: {details['time']}")
 
     if details.get("payment_method"):
-        lines.append(f"💳 Method: {details['payment_method']}")
+        lines.append(f"Method: {details['payment_method']}")
 
     if details.get("upi_id"):
-        lines.append(f"📱 UPI ID: {details['upi_id']}")
+        lines.append(f" UPI ID: {details['upi_id']}")
 
     if details.get("bank_name"):
-        lines.append(f"🏦 Bank: {details['bank_name']}")
+        lines.append(f" Bank: {details['bank_name']}")
 
     return "\n".join(lines) if lines else "No payment details extracted"
-
-
-# --------------------------------------------------------
+    
 # Streamlit example
-# --------------------------------------------------------
 
 def streamlit_example():
     import streamlit as st
