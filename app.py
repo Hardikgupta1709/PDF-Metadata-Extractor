@@ -37,18 +37,18 @@ try:
     from src.parser.image_extractor import extract_payment_info_from_image, format_payment_details
     from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
     from src.parser.email_extractor import extract_full_text, find_emails
-    print("✅ All local modules imported successfully")
+    print(" All local modules imported successfully")
 except ImportError as e:
     try:
         # Fallback: try with src prefix
         from src.parser.image_extractor import extract_payment_info_from_image, format_payment_details
         from src.parser.grobid_client import parse_pdf_with_grobid, extract_metadata_from_tei
         from src.parser.email_extractor import extract_full_text, find_emails
-        print("✅ All local modules imported successfully (via src)")
+        print(" All local modules imported successfully (via src)")
     except ImportError as e2:
         st.error(f"**Failed to import local modules!** Details: {e2}")
-        st.warning("📦 Make sure all dependencies are installed")
-        st.info("💡 You can still use manual form filling")
+        st.warning(" Make sure all dependencies are installed")
+        st.info(" You can still use manual form filling")
         # Set dummy functions to prevent crashes
         def extract_payment_info_from_image(*args, **kwargs):
             return {}
@@ -83,7 +83,325 @@ def is_production():
     return is_render_environment() or is_streamlit_cloud()
 
 # ----------------- CONFIG -----------------
-st.set_page_config(page_title="Research Paper Submission", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Research Paper Submission", page_icon="", layout="wide")
+
+def apply_custom_theme():
+    """Apply white and orange custom theme"""
+    st.markdown("""
+        <style>
+        /* Main theme colors */
+        :root {
+            --primary-orange: #FF6B35;
+            --light-orange: #FF8C61;
+            --pale-orange: #FFF5F0;
+            --dark-orange: #E55A2B;
+            --text-dark: #2C3E50;
+            --text-light: #5A6C7D;
+        }
+        
+        /* Background colors */
+        .stApp {
+            background-color: #FFFFFF;
+        }
+        
+        /* Sidebar styling */
+        [data-testid="stSidebar"] {
+            background-color: var(--pale-orange);
+            border-right: 2px solid var(--primary-orange);
+        }
+        
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+            color: var(--text-dark);
+        }
+        
+        /* Headers */
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--primary-orange) !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Primary buttons */
+        .stButton > button[kind="primary"] {
+            background-color: var(--primary-orange);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .stButton > button[kind="primary"]:hover {
+            background-color: var(--dark-orange);
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+        }
+        
+        /* Secondary buttons - NO HOVER EFFECT */
+        .stButton > button {
+            border: 2px solid var(--primary-orange);
+            color: var(--primary-orange);
+            background-color: white;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        
+        .stButton > button:hover {
+            border: 2px solid var(--primary-orange);
+            color: var(--primary-orange);
+            background-color: white;
+            transform: none;
+        }
+        
+        /* Form submit button */
+        .stForm button[kind="primary"] {
+            background: linear-gradient(135deg, var(--primary-orange) 0%, var(--light-orange) 100%);
+            font-size: 18px;
+            padding: 12px 24px;
+            box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+        }
+        
+        /* Input fields */
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stSelectbox > div > div > select {
+            background-color: #FFFFFF !important;
+            border: 2px solid #DDDDDD !important;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            color: #1A1A1A !important;
+            font-weight: 500 !important;
+            font-size: 16px !important;
+            outline: none !important;
+        }
+        
+        /* Placeholder text */
+        .stTextInput > div > div > input::placeholder,
+        .stTextArea > div > div > textarea::placeholder {
+            color: #999999 !important;
+            font-weight: 400 !important;
+            opacity: 0.7;
+        }
+        
+        .stTextInput > div > div > input:focus,
+        .stTextArea > div > div > textarea:focus,
+        .stSelectbox > div > div > select:focus {
+            border-color: var(--primary-orange) !important;
+            box-shadow: none !important;
+            background-color: #FFFFFF !important;
+            outline: none !important;
+        }
+        
+        /* Disabled input fields (like "All Found Emails") */
+        .stTextInput > div > div > input:disabled,
+        .stTextArea > div > div > textarea:disabled {
+            background-color: #F5F5F5 !important;
+            border: 2px solid #CCCCCC !important;
+            color: #666666 !important;
+            opacity: 1 !important;
+        }
+        
+        /* File uploader */
+        [data-testid="stFileUploader"] {
+            border: 2px dashed var(--primary-orange);
+            border-radius: 8px;
+            background-color: var(--pale-orange);
+            padding: 20px;
+        }
+        
+        [data-testid="stFileUploader"]:hover {
+            border-color: var(--dark-orange);
+            background-color: #FFE8DC;
+        }
+        
+        /* File uploader text */
+        [data-testid="stFileUploader"] label,
+        [data-testid="stFileUploader"] p,
+        [data-testid="stFileUploader"] small {
+            color: var(--text-dark) !important;
+            font-weight: 500;
+        }
+        
+        /* File uploader button */
+        [data-testid="stFileUploader"] button {
+            background-color: var(--primary-orange) !important;
+            color: white !important;
+            border: none !important;
+            font-weight: 600;
+        }
+        
+        /* Success messages */
+        .stSuccess {
+            background-color: #E8F5E9;
+            border-left: 4px solid var(--primary-orange);
+            color: var(--text-dark);
+        }
+        
+        /* Info messages */
+        .stInfo {
+            background-color: var(--pale-orange);
+            border-left: 4px solid var(--light-orange);
+            color: var(--text-dark);
+        }
+        
+        /* Warning messages */
+        .stWarning {
+            background-color: #FFF3E0;
+            border-left: 4px solid #FF9800;
+            color: var(--text-dark);
+        }
+        
+        /* Error messages */
+        .stError {
+            background-color: #FFEBEE;
+            border-left: 4px solid #F44336;
+            color: var(--text-dark);
+        }
+        
+        /* Metrics */
+        [data-testid="stMetricValue"] {
+            color: var(--primary-orange);
+            font-weight: 700;
+        }
+        
+        /* Expander */
+        .streamlit-expanderHeader {
+            background-color: var(--pale-orange);
+            color: var(--primary-orange);
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        
+        .streamlit-expanderHeader:hover {
+            background-color: #FFE8DC;
+        }
+        
+        /* Checkbox */
+        .stCheckbox > label {
+            color: #1A1A1A !important;
+            font-weight: 600 !important;
+            font-size: 16px !important;
+        }
+        
+        .stCheckbox > label > div {
+            color: #1A1A1A !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Checkbox text specifically */
+        .stCheckbox span {
+            color: #1A1A1A !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Dataframe */
+        [data-testid="stDataFrame"] {
+            border: 2px solid var(--primary-orange);
+            border-radius: 8px;
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            background-color: white;
+            border: 2px solid #E0E0E0;
+            border-radius: 6px;
+            color: var(--text-dark);
+        }
+        
+        .stTabs [aria-selected="true"] {
+            background-color: var(--primary-orange);
+            border-color: var(--primary-orange);
+            color: white;
+        }
+        
+        /* Progress bar */
+        .stProgress > div > div > div {
+            background-color: var(--primary-orange);
+        }
+        
+        /* Spinner */
+        .stSpinner > div {
+            border-top-color: var(--primary-orange);
+        }
+        
+        /* Code blocks */
+        code {
+            background-color: var(--pale-orange);
+            color: var(--dark-orange);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        /* Links */
+        a {
+            color: var(--primary-orange);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        a:hover {
+            color: var(--dark-orange);
+            text-decoration: underline;
+        }
+        
+        /* Horizontal rule */
+        hr {
+            border-color: var(--primary-orange);
+            opacity: 0.3;
+        }
+        
+        /* Form container */
+        [data-testid="stForm"] {
+            border: 2px solid var(--primary-orange);
+            border-radius: 12px;
+            padding: 24px;
+            background-color: #FAFAFA;
+        }
+        
+        /* Form labels */
+        [data-testid="stForm"] label {
+            color: var(--text-dark) !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+        }
+        
+        /* Form input text */
+        [data-testid="stForm"] input,
+        [data-testid="stForm"] textarea {
+            color: #1A1A1A !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Column containers */
+        [data-testid="column"] {
+            background-color: white;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        
+        /* Footer styling */
+        footer {
+            color: var(--text-light);
+        }
+        
+        /* Download button */
+        .stDownloadButton > button {
+            border: 2px solid var(--primary-orange);
+            color: var(--primary-orange);
+            background-color: white;
+        }
+        
+        .stDownloadButton > button:hover {
+            background-color: var(--primary-orange);
+            color: white;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+# Call this function right after st.set_page_config()
+apply_custom_theme()
 
 # --- Main Config ---
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
@@ -131,6 +449,9 @@ HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
 TOKEN_DIR = ".streamlit"
 TOKEN_FILE = Path(TOKEN_DIR) / "google_token.pickle"
 TOKEN_EXPIRY_DAYS = 7
+
+# WhatsApp Group Link
+WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/Jxv6rg1BFL2C7TThfYubUc"
 
 # ----------------- SESSION STATE INIT -----------------
 def init_session_state():
@@ -181,7 +502,7 @@ def get_credentials_from_refresh_token():
         print(f"OAUTH_TOKEN_URI: {token_uri}")
         
         if not all([refresh_token, client_id, client_secret]):
-            error_msg = "❌ Missing OAuth credentials in environment variables"
+            error_msg = " Missing OAuth credentials in environment variables"
             missing = []
             if not refresh_token:
                 missing.append("OAUTH_REFRESH_TOKEN")
@@ -197,7 +518,7 @@ def get_credentials_from_refresh_token():
         
         # Validate token format - refresh tokens should be 50+ characters
         if len(refresh_token) < 50:
-            error_msg = f"❌ OAUTH_REFRESH_TOKEN appears invalid (too short: {len(refresh_token)} chars, expected: 100+)"
+            error_msg = f" OAUTH_REFRESH_TOKEN appears invalid (too short: {len(refresh_token)} chars, expected: 100+)"
             print(error_msg)
             st.session_state.oauth_error = error_msg
             return None
@@ -213,14 +534,14 @@ def get_credentials_from_refresh_token():
         )
         
         # Refresh to get access token
-        print("🔄 Attempting to refresh OAuth token...")
+        print("Attempting to refresh OAuth token...")
         creds.refresh(Request())
-        print("✅ OAuth token refreshed successfully!")
+        print(" OAuth token refreshed successfully!")
         st.session_state.oauth_error = None
         return creds
         
     except Exception as e:
-        error_msg = f"❌ OAuth Error: {str(e)}"
+        error_msg = f" OAuth Error: {str(e)}"
         print(error_msg)
         print("\n=== Troubleshooting Tips ===")
         print("1. Make sure you generated credentials locally FIRST")
@@ -310,7 +631,7 @@ def get_token_status():
         elif days_left <= 2:
             return {
                 "status": "expiring_soon",
-                "message": f"⚠️ Expires in {days_left} day(s) - reconnect soon",
+                "message": f" Expires in {days_left} day(s) - reconnect soon",
                 "color": "orange",
                 "days_left": days_left,
                 "expiry_date": expiry_date
@@ -318,7 +639,7 @@ def get_token_status():
         else:
             return {
                 "status": "active",
-                "message": f"✅ Active - {days_left} days remaining",
+                "message": f" Active - {days_left} days remaining",
                 "color": "green",
                 "days_left": days_left,
                 "expiry_date": expiry_date
@@ -342,7 +663,7 @@ def clear_token():
         st.session_state.google_creds = None
     if "token_expiry_date" in st.session_state:
         st.session_state.token_expiry_date = None
-    st.success("🔌 Disconnected from Google")
+    st.success(" Disconnected from Google")
     time.sleep(1)
     st.rerun()
 
@@ -361,7 +682,7 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
             except:
                 st.session_state.google_creds = None
                 if interactive:
-                    st.error("❌ Token refresh failed - reconnection required")
+                    st.error(" Token refresh failed - reconnection required")
         else:
             return creds
     
@@ -370,7 +691,7 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
     
     if status == "expired":
         if interactive:
-            st.error(f"🔒 Your Google token expired after {TOKEN_EXPIRY_DAYS} days")
+            st.error(f" Your Google token expired after {TOKEN_EXPIRY_DAYS} days")
             st.warning("Please reconnect to continue using Google services")
         clear_token()
         return None
@@ -384,7 +705,7 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
             return creds
         except:
             if interactive:
-                st.error("❌ Token refresh failed - reconnection required")
+                st.error(" Token refresh failed - reconnection required")
             creds = None
     
     # No valid credentials - start OAuth flow
@@ -392,7 +713,7 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
         return None
     
     if not os.path.exists(CLIENT_SECRET_FILE):
-        st.error(f"❌ **Missing `{CLIENT_SECRET_FILE}`!**")
+        st.error(f" **Missing `{CLIENT_SECRET_FILE}`!**")
         st.info("Download from Google Cloud Console and place in project root")
         return None
     
@@ -404,11 +725,11 @@ def get_oauth_credentials_local(interactive: bool = True) -> Optional[object]:
         st.session_state.google_creds = creds
         
         # Display success WITHOUT rerun
-        st.success(f"✅ Connected! Token valid until {expiry_date.strftime('%B %d, %Y')}")
+        st.success(f" Connected! Token valid until {expiry_date.strftime('%B %d, %Y')}")
         
         # ALWAYS SHOW credentials - don't hide in expander
         st.markdown("---")
-        st.markdown("### 🔧 **Copy These to Render Environment Variables**")
+        st.markdown("###  **Copy These to Render Environment Variables**")
         st.markdown("**Set these EXACT variable names in Render:**")
         st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
 WEB_CLIENT_ID={creds.client_id}
@@ -416,8 +737,8 @@ WEB_CLIENT_SECRET={creds.client_secret}
 WEB_TOKEN_URI={creds.token_uri}
 GOOGLE_SHEET_ID=<your_sheet_id_here>
 GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
-        st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
-        st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+        st.warning(" Make sure to copy the FULL refresh_token (it's very long!)")
+        st.info(" These credentials allow Render to access your Google Drive without expiring!")
         st.markdown("---")
         
         # DON'T rerun - let user see the credentials
@@ -425,7 +746,7 @@ GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
         
     except Exception as e:
         # Manual flow fallback
-        st.warning("⚠️ Automatic auth failed. Using manual flow.")
+        st.warning(" Automatic auth failed. Using manual flow.")
         
         if 'oauth_flow' not in st.session_state:
             try:
@@ -448,9 +769,9 @@ GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
         
         # Display authorization UI
         st.markdown("---")
-        st.markdown("### 🔐 Manual Authorization Required")
+        st.markdown("###  Manual Authorization Required")
         st.markdown("#### Step 1: Authorize")
-        st.markdown(f"[🔗 **Click here to authorize with Google**]({st.session_state.oauth_auth_url})")
+        st.markdown(f"[ **Click here to authorize with Google**]({st.session_state.oauth_auth_url})")
         
         st.markdown("#### Step 2: Copy URL")
         st.info(f"""
@@ -470,15 +791,15 @@ GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
         
         col1, col2 = st.columns([3, 1])
         with col2:
-            submit_btn = st.button("✅ Connect", type="primary", use_container_width=True)
+            submit_btn = st.button(" Connect", type="primary", use_container_width=True)
         
         if submit_btn:
             if not auth_response or "code=" not in auth_response:
-                st.error("❌ Invalid URL. Make sure you copied the complete URL.")
+                st.error(" Invalid URL. Make sure you copied the complete URL.")
                 return None
             
             try:
-                with st.spinner("🔄 Connecting to Google..."):
+                with st.spinner(" Connecting to Google..."):
                     flow = st.session_state.oauth_flow
                     flow.fetch_token(authorization_response=auth_response)
                     creds = flow.credentials
@@ -491,11 +812,11 @@ GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
                     del st.session_state.oauth_state
                     del st.session_state.oauth_auth_url
                     
-                    st.success(f"✅ Authorization complete! Token valid until {expiry_date.strftime('%B %d, %Y')}")
+                    st.success(f" Authorization complete! Token valid until {expiry_date.strftime('%B %d, %Y')}")
                     
                     # ALWAYS SHOW credentials - don't hide in expander
                     st.markdown("---")
-                    st.markdown("### 🔧 **Copy These to Render Environment Variables**")
+                    st.markdown("###  **Copy These to Render Environment Variables**")
                     st.markdown("**Set these EXACT variable names in Render:**")
                     st.code(f"""OAUTH_REFRESH_TOKEN={creds.refresh_token}
 WEB_CLIENT_ID={creds.client_id}
@@ -503,14 +824,14 @@ WEB_CLIENT_SECRET={creds.client_secret}
 WEB_TOKEN_URI={creds.token_uri}
 GOOGLE_SHEET_ID=<your_sheet_id_here>
 GOOGLE_DRIVE_FOLDER_ID=<your_folder_id_here>""", language="bash")
-                    st.warning("⚠️ Make sure to copy the FULL refresh_token (it's very long!)")
-                    st.info("💡 These credentials allow Render to access your Google Drive without expiring!")
+                    st.warning(" Make sure to copy the FULL refresh_token (it's very long!)")
+                    st.info(" These credentials allow Render to access your Google Drive without expiring!")
                     st.markdown("---")
                     
                     # DON'T rerun - let user see the credentials
                     return creds
             except Exception as e:
-                st.error(f"❌ Connection failed: {str(e)}")
+                st.error(f" Connection failed: {str(e)}")
                 return None
         
         return None
@@ -523,11 +844,11 @@ def get_google_credentials(interactive: bool = True):
     """
     if is_production():
         # PRODUCTION: Use refresh token from environment
-        print("🚀 Production environment detected (Render)")
+        print(" Production environment detected (Render)")
         creds = get_credentials_from_refresh_token()
         
         if not creds and interactive:
-            st.error("❌ OAuth Configuration Failed")
+            st.error(" OAuth Configuration Failed")
             
             if st.session_state.oauth_error:
                 st.error(f"Error: {st.session_state.oauth_error}")
@@ -559,11 +880,11 @@ def get_google_credentials(interactive: bool = True):
                 After updating environment variables, click "Manual Deploy" in Render.
                 
                 #### Common Issues:
-                - ❌ **Invalid Grant**: Refresh token expired or revoked
-                - ❌ **Missing Variables**: Check all variables are set (especially OAUTH_REFRESH_TOKEN)
-                - ❌ **Wrong Credentials**: Must use OAuth credentials, not API keys
-                - ❌ **Copy/Paste Error**: Ensure no extra spaces or line breaks, copy the FULL token
-                - ❌ **Variable Names**: Must match exactly (WEB_CLIENT_ID, not OAUTH_CLIENT_ID)
+                -  **Invalid Grant**: Refresh token expired or revoked
+                -  **Missing Variables**: Check all variables are set (especially OAUTH_REFRESH_TOKEN)
+                -  **Wrong Credentials**: Must use OAuth credentials, not API keys
+                -  **Copy/Paste Error**: Ensure no extra spaces or line breaks, copy the FULL token
+                -  **Variable Names**: Must match exactly (WEB_CLIENT_ID, not OAUTH_CLIENT_ID)
                 
                 #### Why This Happens:
                 - Refresh tokens can expire after 6 months of inactivity
@@ -571,13 +892,13 @@ def get_google_credentials(interactive: bool = True):
                 - Revoking access in Google Account settings invalidates tokens
                 """)
                 
-            st.warning("⚠️ App will work in LOCAL mode only (no Google Drive sync)")
+            st.warning(" App will work in LOCAL mode only (no Google Drive sync)")
             return None
         
         return creds
     else:
         # LOCAL: Use OAuth with local token file
-        print("💻 Local development environment detected")
+        print(" Local development environment detected")
         return get_oauth_credentials_local(interactive=interactive)
 
 # ----------------- GOOGLE API SERVICES -----------------
@@ -589,20 +910,24 @@ def build_sheets_service(creds):
 
 # ----------------- LOCAL STORAGE & CSV -----------------
 def init_csv():
+    """Initialize CSV with FIXED 23-field header"""
     if not os.path.exists(SUBMISSIONS_FILE):
         with open(SUBMISSIONS_FILE, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
+            # FIXED: 23 fields total (was 16, causing the error)
             writer.writerow([
-                "Submission ID", "Timestamp", "Paper Title", "Authors",
-                "Email", "Research Area", "Type",
+                "Submission ID", "Paper ID", "Timestamp", "Paper Title", "Authors",
+                "All Author Affiliations", "Corresponding Email", "All Emails",
+                "Presenter Name", "Presenter Affiliation", "Presenter Email", 
+                "Presenter Mobile", "Nationality", "WhatsApp Group Joined",
                 "Transaction ID", "Amount", "Payment Method", "Payment Date", "UPI ID",
                 "Local PDF Path", "Local Image Path",
                 "Drive Document Link", "Drive Folder Link"
             ])
         
         if is_production():
-            print("⚠️ WARNING: CSV storage is ephemeral on Render. Data will be lost on restart!")
-            print("💡 Google Sheets integration is REQUIRED for persistent storage")
+            print(" WARNING: CSV storage is ephemeral on Render. Data will be lost on restart!")
+            print(" Google Sheets integration is REQUIRED for persistent storage")
 
 def init_storage():
     os.makedirs(SUBMISSIONS_FOLDER, exist_ok=True)
@@ -628,18 +953,36 @@ def save_files_locally(pdf_file, image_file, submission_id, author_name):
         return None
 
 def append_to_csv(data):
+    """Append submission data with FIXED 23 fields"""
     with open(SUBMISSIONS_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
+        # FIXED: 23 fields matching the header above
         writer.writerow([
-            data["submission_id"], data["timestamp"], data["title"],
-            data["authors"], data["corresponding_email"],
-            data["research_area"], data["submission_type"],
-            data.get("transaction_id", ""), data.get("amount", ""),
-            data.get("payment_method", ""), data.get("payment_date", ""),
+            data["submission_id"], 
+            data.get("paper_id", ""), 
+            data["timestamp"], 
+            data["title"], 
+            data["authors"], 
+            data.get("affiliations", ""),
+            data["corresponding_email"],
+            data.get("all_emails", ""),
+            data.get("presenter_name", ""), 
+            data.get("presenter_affiliation", ""),
+            data.get("presenter_email", ""), 
+            data.get("presenter_mobile", ""),
+            data.get("nationality", ""), 
+            data.get("whatsapp_joined", ""),
+            data.get("transaction_id", ""), 
+            data.get("amount", ""),
+            data.get("payment_method", ""), 
+            data.get("payment_date", ""),
             data.get("upi_id", ""),
-            data.get("pdf_path", ""), data.get("image_path", ""),
-            data.get("drive_doc_link", ""), data.get("drive_folder_link", "")
+            data.get("pdf_path", ""), 
+            data.get("image_path", ""),
+            data.get("drive_doc_link", ""), 
+            data.get("drive_folder_link", "")
         ])
+
 
 # ----------------- DRIVE OPERATIONS -----------------
 def get_or_create_main_drive_folder(drive_service):
@@ -750,7 +1093,7 @@ Receipt: {file_links.get('image_link', 'N/A')}
 def append_to_google_sheets(sheets_service, submission_data, doc_link, folder_link):
     try:
         if not SHEET_ID:
-            st.warning("⚠️ Sheet ID not configured")
+            st.warning(" Sheet ID not configured")
             return False
 
         row = [
@@ -759,8 +1102,16 @@ def append_to_google_sheets(sheets_service, submission_data, doc_link, folder_li
             submission_data["title"],
             submission_data["authors"],
             submission_data["corresponding_email"],
-            submission_data["research_area"],
-            submission_data["submission_type"],
+            submission_data.get("affiliations", ""),
+            
+            # NEW: Presenter fields
+            submission_data.get("presenter_name", ""),
+            submission_data.get("presenter_email", ""),
+            submission_data.get("presenter_affiliation", ""),
+            submission_data.get("presenter_mobile", ""),
+            submission_data.get("nationality", ""),
+            submission_data.get("whatsapp_joined", ""),
+            
             submission_data.get("transaction_id", ""),
             submission_data.get("amount", ""),
             submission_data.get("payment_method", ""),
@@ -769,7 +1120,7 @@ def append_to_google_sheets(sheets_service, submission_data, doc_link, folder_li
         ]
         sheets_service.spreadsheets().values().append(
             spreadsheetId=SHEET_ID,
-            range="Sheet1!A:L",
+            range="Sheet1!A:Q",  # CHANGED from A:L to A:Q (17 columns now)
             valueInputOption="RAW",
             body={"values": [row]}
         ).execute()
@@ -777,7 +1128,7 @@ def append_to_google_sheets(sheets_service, submission_data, doc_link, folder_li
     except Exception as e:
         st.error(f"Sheets error: {e}")
         return False
-
+    
 def upload_complete_submission(creds, pdf_file, image_file, submission_data):
     try:
         drive_service = build_drive_service(creds)
@@ -840,41 +1191,41 @@ init_storage()
 
 # ----------------- SIDEBAR -----------------
 with st.sidebar:
-    st.header("🔐 Admin Access")
+    st.header(" Admin Access")
     if not st.session_state.admin_authenticated:
         with st.form("admin_login_form"):
             pin_input = st.text_input("Enter PIN", type="password")
-            if st.form_submit_button("🔓 Unlock"):
+            if st.form_submit_button(" Unlock"):
                 if pin_input == ADMIN_PIN:
                     st.session_state.admin_authenticated = True
-                    st.success("✅ Authenticated!")
+                    st.success(" Authenticated!")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("❌ Wrong PIN")
+                    st.error(" Wrong PIN")
     else:
-        st.success("✅ Admin Mode")
-        if st.button("🔒 Lock"):
+        st.success("Admin Mode")
+        if st.button(" Lock"):
             st.session_state.admin_authenticated = False
             st.rerun()
 
         st.markdown("---")
-        st.subheader("☁️ Google Connection")
+        st.subheader(" Google Connection")
         
         if is_production():
             # PRODUCTION MODE - Using refresh token
-            st.info("🚀 Production (Render/Cloud)")
+            st.info(" Production (Render/Cloud)")
             st.caption("Using OAuth Refresh Token")
             
             creds = get_credentials_from_refresh_token()
             if creds:
-                st.success("✅ Connected via Refresh Token")
+                st.success(" Connected via Refresh Token")
                 st.caption("No expiry - always active!")
             else:
-                st.error("❌ Not Connected")
-                st.warning("⚠️ OAuth credentials missing or invalid")
+                st.error(" Not Connected")
+                st.warning(" OAuth credentials missing or invalid")
                 
-                with st.expander("📋 Setup Instructions for Render"):
+                with st.expander(" Setup Instructions for Render"):
                     st.markdown("""
                     ### Step 1: Authorize Locally First
                     1. Run this app **locally** on your computer
@@ -902,25 +1253,25 @@ with st.sidebar:
                     - No extra spaces or line breaks
                     """)
                 
-                st.info("💡 Authorize locally first, then deploy to Render with the refresh token")
+                st.info(" Authorize locally first, then deploy to Render with the refresh token")
         
         else:
             # LOCAL MODE - Using token file
-            st.info("💻 Local Development")
+            st.info(" Local Development")
             
             token_status = get_token_status()
             
             if token_status["status"] == "not_connected":
-                st.warning("⚠️ Not Connected")
+                st.warning(" Not Connected")
             elif token_status["status"] == "expired":
-                st.error("🔒 Token Expired")
+                st.error(" Token Expired")
                 st.warning(f"{token_status['message']}")
             elif token_status["status"] == "expiring_soon":
-                st.warning(f"⏰ {token_status['message']}")
+                st.warning(f" {token_status['message']}")
                 if token_status.get("expiry_date"):
                     st.caption(f"Expires: {token_status['expiry_date'].strftime('%B %d, %Y')}")
             elif token_status["status"] == "active":
-                st.success(f"✅ {token_status['message']}")
+                st.success(f" {token_status['message']}")
                 if token_status.get("expiry_date"):
                     st.caption(f"Valid until: {token_status['expiry_date'].strftime('%B %d, %Y')}")
             
@@ -928,19 +1279,19 @@ with st.sidebar:
             if st.session_state.google_creds or token_status["status"] == "active":
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("🔌 Disconnect", use_container_width=True, key="disconnect_btn"):
+                    if st.button(" Disconnect", use_container_width=True, key="disconnect_btn"):
                         clear_token()
                 with col2:
-                    if st.button("🔄 Refresh", use_container_width=True, key="refresh_btn"):
+                    if st.button(" Refresh", use_container_width=True, key="refresh_btn"):
                         st.rerun()
             else:
-                if st.button("🔗 Connect with Google", use_container_width=True, type="primary", key="connect_btn"):
+                if st.button(" Connect with Google", use_container_width=True, type="primary", key="connect_btn"):
                     st.session_state.show_oauth_ui = True
                     st.rerun()
 
         # Debug info for admin
         if st.session_state.admin_authenticated:
-            with st.expander("🔍 Debug Environment Variables"):
+            with st.expander(" Debug Environment Variables"):
                 st.code(f"""
 Environment: {'Production (Render)' if is_production() else 'Local Development'}
 RENDER: {os.getenv('RENDER', 'Not set')}
@@ -958,10 +1309,10 @@ GOOGLE_DRIVE_FOLDER_ID: {'✓ Set' if GOOGLE_DRIVE_FOLDER_ID else '✗ Missing'}
                 """)
 
         st.markdown("---")
-        st.subheader("📊 Dashboard")
+        st.subheader(" Dashboard")
         st.metric("Total Submissions", count_submissions())
         
-        if st.button("📋 View All", use_container_width=True):
+        if st.button(" View All", use_container_width=True):
             if os.path.exists(SUBMISSIONS_FILE):
                 try:
                     df = pd.read_csv(SUBMISSIONS_FILE)
@@ -969,27 +1320,27 @@ GOOGLE_DRIVE_FOLDER_ID: {'✓ Set' if GOOGLE_DRIVE_FOLDER_ID else '✗ Missing'}
                         st.dataframe(df, use_container_width=True, height=400)
                         csv_data = df.to_csv(index=False).encode("utf-8")
                         st.download_button(
-                            "⬇️ Download CSV",
+                            " Download CSV",
                             csv_data,
                             f"submissions_{datetime.now().strftime('%Y%m%d')}.csv",
                             "text/csv",
                             use_container_width=True
                         )
                     else:
-                        st.info("📭 No submissions yet")
+                        st.info(" No submissions yet")
                 except Exception as e:
-                    st.error(f"❌ Error: {e}")
-                    with st.expander("🔍 Debug"):
+                    st.error(f" Error: {e}")
+                    with st.expander(" Debug"):
                         try:
                             with open(SUBMISSIONS_FILE, 'r') as f:
                                 st.text(f.read())
                         except:
                             pass
             else:
-                st.info("📭 No submissions file found")
+                st.info(" No submissions file found")
 
         st.markdown("---")
-        st.subheader("⚙️ Settings")
+        st.subheader(" Settings")
         st.session_state.grobid_server = st.text_input(
             "GROBID Server",
             value=st.session_state.grobid_server
@@ -1016,8 +1367,8 @@ if st.session_state.show_oauth_ui and not st.session_state.google_creds:
 
 if st.session_state.show_success:
     st.success(" **Submission successful!**")
-    st.info("✅ All details saved. Admin will review shortly.")
-    if st.button("➕ Submit Another"):
+    st.info(" All details saved. Admin will review shortly.")
+    if st.button(" Submit Another"):
         st.session_state.show_success = False
         st.session_state.metadata = None
         st.session_state.extracted = False
@@ -1053,14 +1404,13 @@ if uploaded_pdf and uploaded_image:
     col_extract1, col_extract2 = st.columns(2)
     
     with col_extract1:
-        st.markdown("##### 📄 Extract Paper Metadata")
-    if st.button("🤖 Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
+        st.markdown("#####  Extract Paper Metadata")
+    if st.button(" Auto-Fill from PDF", type="primary", use_container_width=True, key="autofill_pdf"):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
             tmp.write(uploaded_pdf.getvalue())
             tmp_path = tmp.name
-        
         try:
-            with st.spinner("🔄 Extracting metadata from PDF..."):
+            with st.spinner(" Extracting metadata from PDF..."):
                 # Parse with GROBID
                 tei_xml = parse_pdf_with_grobid(tmp_path, st.session_state.grobid_server)
                 
@@ -1069,9 +1419,9 @@ if uploaded_pdf and uploaded_image:
                 
                 # DEBUG: Show TEI XML structure (only for admin)
                 if st.session_state.admin_authenticated:
-                    with st.expander("🔍 Debug: TEI XML Preview"):
+                    with st.expander(" Debug: TEI XML Preview"):
                         st.text(tei_xml[:1000] + "...")
-                        if st.button("📥 Download Full TEI XML"):
+                        if st.button(" Download Full TEI XML"):
                             st.download_button(
                                 "Download TEI XML",
                                 tei_xml,
@@ -1082,17 +1432,46 @@ if uploaded_pdf and uploaded_image:
                 # Extract metadata with debug mode
                 metadata = extract_metadata_from_tei(tei_xml, debug=True)
                 
-                # Extract affiliations (uses same TEI XML)
+                # ✅ FIXED: Properly extract ONLY organization names from affiliations
                 from xml.etree import ElementTree as ET
                 root = ET.fromstring(tei_xml)
                 ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
-                affiliations = root.findall('.//tei:affiliation', ns)
+
+                # Clear any badly formatted affiliations from extract_metadata_from_tei
                 affil_list = []
-                for affil in affiliations:
-                    org_name = affil.find('.//tei:orgName', ns)
-                    if org_name is not None and org_name.text:
-                        affil_list.append(org_name.text.strip())
-                metadata['affiliations'] = list(set(affil_list))
+
+                # Method 1: Try to get from author affiliations first (most reliable)
+                authors_found = False
+                for author in root.findall('.//tei:author', ns):
+                    authors_found = True
+                    for affil in author.findall('.//tei:affiliation', ns):
+                        # Get all orgName elements within this affiliation
+                        org_names = affil.findall('.//tei:orgName', ns)
+                        for org in org_names:
+                            if org.text and org.text.strip():
+                                clean_name = org.text.strip()
+                                # Avoid duplicates
+                                if clean_name not in affil_list:
+                                    affil_list.append(clean_name)
+
+                # Method 2: If no author affiliations, try standalone affiliations
+                if not affil_list:
+                    for affil in root.findall('.//tei:affiliation', ns):
+                        org_names = affil.findall('.//tei:orgName', ns)
+                        for org in org_names:
+                            if org.text and org.text.strip():
+                                clean_name = org.text.strip()
+                                if clean_name not in affil_list:
+                                    affil_list.append(clean_name)
+
+                # IMPORTANT: Override the affiliations from extract_metadata_from_tei
+                metadata['affiliations'] = affil_list
+                
+                # Debug output for admin
+                if st.session_state.admin_authenticated:
+                    st.info(f" Debug: Found {len(affil_list)} affiliations")
+                    if affil_list:
+                        st.code("; ".join(affil_list))
                 
                 # Extract emails from PDF text
                 metadata['emails'] = find_emails(extract_full_text(tmp_path))
@@ -1101,37 +1480,40 @@ if uploaded_pdf and uploaded_image:
                 st.session_state.metadata = metadata
                 st.session_state.extracted = True
                 
-                st.success("✅ PDF metadata extracted!")
+                st.success(" PDF metadata extracted ")
                 
                 # Show what was extracted
-                with st.expander("📊 Extraction Summary", expanded=True):
+                with st.expander("Extraction Summary", expanded=True):
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         if metadata.get('title'):
-                            st.metric("Title", "✅ Found")
+                            st.metric("Title", "Found")
                         else:
-                            st.metric("Title", "❌ Not Found")
+                            st.metric("Title", " Not Found")
                     with col2:
                         st.metric("Authors", len(metadata.get('authors', [])))
                     with col3:
-                        st.metric("Keywords", len(metadata.get('keywords', [])))
+                        st.metric("Affiliations", len(metadata.get('affiliations', [])))
                     
                     if metadata.get('title'):
-                        st.info(f"📄 **Title:** {metadata['title'][:150]}...")
+                        st.info(f" **Title:** {metadata['title'][:150]}...")
                     else:
-                        st.warning("⚠️ Title not found. You'll need to enter it manually.")
+                        st.warning("Title not found. You'll need to enter it manually.")
                     
                     if metadata.get('abstract'):
-                        st.info(f"📝 **Abstract:** {metadata['abstract'][:150]}...")
+                        st.info(f" **Abstract:** {metadata['abstract'][:150]}...")
                     else:
-                        st.warning("⚠️ Abstract not found. You'll need to enter it manually.")
+                        st.warning(" Abstract not found. You'll need to enter it manually.")
                     
                     if metadata.get('authors'):
-                        st.info(f"👥 **Authors:** {', '.join(metadata['authors'][:3])}{'...' if len(metadata['authors']) > 3 else ''}")
+                        st.info(f" **Authors:** {', '.join(metadata['authors'][:3])}{'...' if len(metadata['authors']) > 3 else ''}")
+                    
+                    if metadata.get('affiliations'):
+                        st.info(f" **Affiliations:** {'; '.join(metadata['affiliations'][:2])}{'...' if len(metadata['affiliations']) > 2 else ''}")
                 
                 # Show debug info if title is missing (for admin only)
                 if not metadata.get('title') and st.session_state.admin_authenticated:
-                    with st.expander("🐛 Debug: Why title wasn't extracted"):
+                    with st.expander(" Debug: Why title wasn't extracted"):
                         st.warning("The GROBID parser couldn't find a title in the PDF.")
                         st.info("""
                         **Common reasons:**
@@ -1150,12 +1532,12 @@ if uploaded_pdf and uploaded_image:
                 st.rerun()
                 
         except Exception as e:
-            st.error(f"❌ Extraction failed: {e}")
-            st.info("💡 You can fill the form manually")
+            st.error(f"Extraction failed: {e}")
+            st.info("You can fill the form manually")
             
             # Enhanced error info for admin
             if st.session_state.admin_authenticated:
-                with st.expander("🐛 Error Details"):
+                with st.expander(" Error Details"):
                     st.code(str(e))
                     st.info("""
                     **Troubleshooting:**
@@ -1201,11 +1583,11 @@ if uploaded_pdf and uploaded_image:
                     else:
                         st.warning(" Could not extract all details.")
                         if payment_details.get("raw_text"):
-                            with st.expander("🔍 View Extracted Text"):
+                            with st.expander(" View Extracted Text"):
                                 st.text(payment_details["raw_text"])
             except Exception as e:
                 st.error(f" Extraction failed: {e}")
-                st.info("💡 You can enter payment details manually")
+                st.info(" You can enter payment details manually")
     
     # Show extraction status
     if st.session_state.extracted or st.session_state.payment_details:
@@ -1220,7 +1602,7 @@ if uploaded_pdf and uploaded_image:
             if st.session_state.payment_details.get("transaction_id"):
                 st.success("Payment details extracted - Form auto-filled below!")
             else:
-                st.info("⏭️ Payment extraction pending (optional)")
+                st.info("⏭ Payment extraction pending (optional)")
 
     # FORM SECTION
     st.markdown("---")
@@ -1229,7 +1611,7 @@ if uploaded_pdf and uploaded_image:
     if st.session_state.extracted:
         st.success("Form auto-filled with extracted data! Please review and complete any missing fields.")
     else:
-        st.info("💡 Fill out the form manually or use auto-extraction above")
+        st.info(" Fill out the form manually or use auto-extraction above")
     
     # Get metadata from session state (will be populated after extraction)
     metadata = st.session_state.get('metadata') or {}
@@ -1293,11 +1675,51 @@ if uploaded_pdf and uploaded_image:
                 affiliations_value = metadata['affiliations']
         
         affiliations = st.text_area(
-            "Affiliations (semicolon separated) *", 
-            value=affiliations_value,
-            height=80,
-            help="Extracted from PDF" if affiliations_value else "Enter affiliations separated by semicolons"
-        )
+    "Affiliations (semicolon separated) *", 
+    value=affiliations_value,
+    height=80,
+    help="Extracted from PDF" if affiliations_value else "Enter affiliations separated by semicolons"
+)
+
+        st.markdown("####  Presenter Information")
+        st.info("Please provide details about the person who will present this paper")
+        
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            presenter_name = st.text_input(
+                "Presenter Name *",
+                help="Name of the person presenting the paper"
+            )
+            presenter_email = st.text_input(
+                "Presenter Email *",
+                help="Email address of the presenter"
+            )
+        
+        with col_p2:
+            presenter_affiliation = st.text_input(
+                "Presenter Affiliation *",
+                help="Institution/organization of the presenter"
+            )
+            presenter_mobile = st.text_input(
+                "Presenter Mobile *",
+                help="Contact number of the presenter"
+            )
+        
+        col_n1, col_n2 = st.columns(2)
+        with col_n1:
+            nationality = st.text_input(
+                "Nationality *",
+                help="Nationality of the presenter"
+            )
+        with col_n2:
+            whatsapp_joined = st.selectbox(
+                "Joined WhatsApp Group? *",
+                options=["", "Yes", "No"],
+                help="Have you joined the conference WhatsApp group?"
+            )
+        
+        if whatsapp_joined == "No" or whatsapp_joined == "":
+            st.info(f" Join our WhatsApp group: {WHATSAPP_GROUP_LINK}")
 
         st.markdown("####  Payment Information")
         col_t1, col_t2 = st.columns(2)
@@ -1340,65 +1762,6 @@ if uploaded_pdf and uploaded_image:
             help="Extracted from receipt" if payment_details.get('upi_id') else "Enter UPI ID if applicable"
         )
 
-        st.markdown("#### Abstract & Keywords")
-        
-        # AUTO-FILLED: Abstract
-        abstract = st.text_area(
-            "Abstract *", 
-            value=metadata.get('abstract', ''), 
-            height=150,
-            help="Extracted from PDF" if metadata.get('abstract') else "Enter paper abstract"
-        )
-        
-        # AUTO-FILLED: Keywords (convert list to comma-separated string)
-        keywords_value = ""
-        if metadata.get('keywords'):
-            if isinstance(metadata['keywords'], list):
-                keywords_value = ", ".join(metadata['keywords'])
-            else:
-                keywords_value = metadata['keywords']
-        
-        keywords = st.text_input(
-            "Keywords (comma separated) *", 
-            value=keywords_value,
-            help="Extracted from PDF" if keywords_value else "Enter keywords separated by commas"
-        )
-
-        st.markdown("####  Classification")
-        col_cl1, col_cl2 = st.columns(2)
-        with col_cl1:
-            area = st.selectbox(
-                "Research Area *", 
-                [
-                    "Select...", 
-                    "Computer Science", 
-                    "Artificial Intelligence", 
-                    "Machine Learning", 
-                    "Data Science", 
-                    "Physics", 
-                    "Chemistry", 
-                    "Biology", 
-                    "Mathematics", 
-                    "Engineering", 
-                    "Medicine", 
-                    "Other"
-                ]
-            )
-        with col_cl2:
-            sub_type = st.selectbox(
-                "Submission Type *", 
-                [
-                    "Select...", 
-                    "Full Paper", 
-                    "Short Paper", 
-                    "Poster", 
-                    "Extended Abstract", 
-                    "Review", 
-                    "Case Study"
-                ]
-            )
-
-        comments = st.text_area("Additional Comments (optional)", height=80)
         
         st.markdown("---")
         consent = st.checkbox("I confirm all information is accurate and I have the right to submit this work *")
@@ -1406,7 +1769,7 @@ if uploaded_pdf and uploaded_image:
         st.markdown("")
         col_submit1, col_submit2, col_submit3 = st.columns([1, 2, 1])
         with col_submit2:
-            submitted = st.form_submit_button("🚀 **SUBMIT PAPER**", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("**SUBMIT PAPER**", type="primary", use_container_width=True)
             errors = []
             if not title or not title.strip(): 
                 errors.append("Title")
@@ -1416,14 +1779,21 @@ if uploaded_pdf and uploaded_image:
                 errors.append("Valid Email")
             if not affiliations or not affiliations.strip(): 
                 errors.append("Affiliations")
-            if not abstract or not abstract.strip(): 
-                errors.append("Abstract")
-            if not keywords or not keywords.strip(): 
-                errors.append("Keywords")
-            if area == "Select...": 
-                errors.append("Research Area")
-            if sub_type == "Select...": 
-                errors.append("Submission Type")
+            
+            # NEW: Presenter field validations
+            if not presenter_name or not presenter_name.strip():
+                errors.append("Presenter Name")
+            if not presenter_email or not presenter_email.strip() or '@' not in presenter_email:
+                errors.append("Presenter Email")
+            if not presenter_affiliation or not presenter_affiliation.strip():
+                errors.append("Presenter Affiliation")
+            if not presenter_mobile or not presenter_mobile.strip():
+                errors.append("Presenter Mobile")
+            if not nationality or not nationality.strip():
+                errors.append("Nationality")
+            if not whatsapp_joined or whatsapp_joined == "":
+                errors.append("WhatsApp Group Status")
+            
             if not transaction_id or not transaction_id.strip(): 
                 errors.append("Transaction ID")
             if not amount or not amount.strip(): 
@@ -1447,11 +1817,15 @@ if uploaded_pdf and uploaded_image:
                     'corresponding_email': safe_strip(email),
                     'all_emails': all_emails_display or "",
                     'affiliations': safe_strip(affiliations),
-                    'abstract': safe_strip(abstract),
-                    'keywords': safe_strip(keywords),
-                    'research_area': area,
-                    'submission_type': sub_type,
-                    'comments': safe_strip(comments),
+                    
+                    # NEW: Presenter fields
+                    'presenter_name': safe_strip(presenter_name),
+                    'presenter_email': safe_strip(presenter_email),
+                    'presenter_affiliation': safe_strip(presenter_affiliation),
+                    'presenter_mobile': safe_strip(presenter_mobile),
+                    'nationality': safe_strip(nationality),
+                    'whatsapp_joined': safe_strip(whatsapp_joined),
+                    
                     'pdf_filename': uploaded_pdf.name,
                     'image_filename': uploaded_image.name,
                     'transaction_id': safe_strip(transaction_id),
@@ -1476,7 +1850,7 @@ if uploaded_pdf and uploaded_image:
                 
                 google_creds = get_google_credentials(interactive=False)
                 if GOOGLE_DRIVE_ENABLED and google_creds:
-                    with st.spinner("☁️ Uploading to Google Drive & Sheets..."):
+                    with st.spinner(" Uploading to Google Drive & Sheets..."):
                         drive_data = upload_complete_submission(
                             google_creds, uploaded_pdf, uploaded_image, submission_data
                         )
@@ -1485,34 +1859,34 @@ if uploaded_pdf and uploaded_image:
                                 'drive_doc_link': drive_data.get('doc_link'),
                                 'drive_folder_link': drive_data.get('folder_link')
                             })
-                            st.success("✅ Uploaded to Google Drive & Sheets!")
+                            st.success(" Uploaded to Google Drive & Sheets!")
                         else:
-                            st.warning("⚠️ Drive upload failed. Files saved locally.")
+                            st.warning(" Drive upload failed. Files saved locally.")
                 elif GOOGLE_DRIVE_ENABLED:
-                    st.warning("⚠️ Google not connected. Files saved locally only.")
+                    st.warning(" Google not connected. Files saved locally only.")
                     if is_production():
                         st.error(" CRITICAL: Google Drive is not configured on Render!")
-                        st.info("💡 Files are saved temporarily but will be LOST on restart")
+                        st.info(" Files are saved temporarily but will be LOST on restart")
                     else:
-                        st.info("💡 Admin can connect Google Drive from the sidebar")
+                        st.info(" Admin can connect Google Drive from the sidebar")
 
                 try:
                     append_to_csv(submission_data)
-                    st.success("✅ Logged to local CSV")
+                    st.success(" Logged to local CSV")
                 except Exception as e:
-                    st.error(f"❌ CSV logging error: {e}")
+                    st.error(f" CSV logging error: {e}")
 
                 st.session_state.show_success = True
                 st.rerun()
 
 else:
-    st.info("👆 Please upload both your research paper (PDF) and transaction receipt to begin")
+    st.info(" Please upload both your research paper (PDF) and transaction receipt to begin")
     
     with st.expander("📋 Submission Requirements"):
         st.markdown("""
         **Required Documents:**
-        - ✅ Research paper in PDF format
-        - ✅ Payment receipt (screenshot or PDF)
+        - Research paper in PDF format
+        - Payment receipt (screenshot or PDF)
         
         **Required Information:**
         - Paper title, authors, and affiliations
@@ -1522,10 +1896,11 @@ else:
         - Transaction ID and payment amount
         
         **Optional Features:**
-        - 🤖 Auto-extract metadata from PDF using GROBID
-        - 🔍 Auto-extract payment details from receipt
-        - ☁️ Automatic upload to Google Drive (if admin configured)
+        - Auto-extract metadata from PDF using GROBID
+        - Auto-extract payment details from receipt
+        - Automatic upload to Google Drive (if admin configured)
         """)
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray;'>Developed by SDC - Hardik Gupta</div>", unsafe_allow_html=True)
+
