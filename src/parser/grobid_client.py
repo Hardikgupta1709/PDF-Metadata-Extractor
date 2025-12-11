@@ -1,5 +1,5 @@
 """
-GROBID client for parsing PDF files - Improved version
+GROBID client for parsing PDF files 
 """
 import requests
 import time
@@ -29,7 +29,7 @@ def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 
             with open(pdf_path, 'rb') as pdf_file:
                 files = {'input': pdf_file}
                 
-                # Extended timeout for cold start (free tier wakes up slowly)
+
                 timeout = 120 if attempt == 0 else 60
                 
                 response = requests.post(
@@ -54,7 +54,7 @@ def parse_pdf_with_grobid(pdf_path: str, grobid_server: str, max_retries: int = 
                 )
         
         except requests.exceptions.HTTPError as e:
-            # Retry on 503 (service unavailable - waking up)
+
             if e.response.status_code == 503 and attempt < max_retries - 1:
                 wait_time = (attempt + 1) * 20  # 20s, 40s
                 print(f"Service unavailable (503). Waiting {wait_time}s for service to wake up...")
@@ -75,52 +75,50 @@ def extract_text_from_element(element) -> str:
 
 def extract_title_from_tei(root, ns: dict) -> Optional[str]:
     """
-    Extract title using multiple fallback strategies.
-    GROBID can place titles in different locations depending on PDF structure.
+    Extract title using multiple  strategies.
+    Grobid can place titles in different locations depending on PDF structure.
     """
-    # Strategy 1: Main title in titleStmt (most common)
+
     title_elem = root.find('.//tei:titleStmt/tei:title[@type="main"]', ns)
     if title_elem is not None:
         title = extract_text_from_element(title_elem)
         if title:
             return title
     
-    # Strategy 2: Any title in titleStmt (without type attribute)
+
     title_elem = root.find('.//tei:titleStmt/tei:title', ns)
     if title_elem is not None:
         title = extract_text_from_element(title_elem)
         if title:
             return title
     
-    # Strategy 3: Title in analytic section (for journal articles)
+
     title_elem = root.find('.//tei:analytic/tei:title[@type="main"]', ns)
     if title_elem is not None:
         title = extract_text_from_element(title_elem)
         if title:
             return title
     
-    # Strategy 4: Any title in analytic
+
     title_elem = root.find('.//tei:analytic/tei:title', ns)
     if title_elem is not None:
         title = extract_text_from_element(title_elem)
         if title:
             return title
     
-    # Strategy 5: Title in biblStruct
+
     title_elem = root.find('.//tei:biblStruct//tei:title[@type="main"]', ns)
     if title_elem is not None:
         title = extract_text_from_element(title_elem)
         if title:
             return title
     
-    # Strategy 6: Any title element in the document (last resort)
+
     all_titles = root.findall('.//tei:title', ns)
     for title_elem in all_titles:
         title = extract_text_from_element(title_elem)
-        # Filter out very short titles (likely section headers)
         if title and len(title) > 10:
-            return title
-    
+            return title  
     return None
 
 
@@ -150,7 +148,7 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
             'emails': []
         }
     
-    # Define namespace
+
     ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
     
     metadata = {
@@ -164,7 +162,7 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
         'affiliations': []
     }
     
-    # Extract title using improved method
+
     metadata['title'] = extract_title_from_tei(root, ns)
     
     if debug and metadata['title']:
@@ -173,17 +171,16 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
         print("⚠️ No title found in TEI XML")
     
     # Extract authors - try multiple locations
-    # Location 1: sourceDesc (most common)
     authors = root.findall('.//tei:sourceDesc//tei:author', ns)
     if not authors:
-        # Location 2: analytic section
+
         authors = root.findall('.//tei:analytic//tei:author', ns)
     if not authors:
-        # Location 3: biblStruct
+
         authors = root.findall('.//tei:biblStruct//tei:author', ns)
     
     for author in authors:
-        # Try persName structure
+
         pers_name = author.find('.//tei:persName', ns)
         if pers_name is not None:
             forename = pers_name.find('.//tei:forename', ns)
@@ -208,7 +205,7 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
                 metadata['authors'].append(surname.text.strip())
     
     if debug:
-        print(f"✅ Authors extracted: {len(metadata['authors'])}")
+        print(f" Authors extracted: {len(metadata['authors'])}")
     
     # Extract abstract - try multiple locations
     abstract_elem = root.find('.//tei:profileDesc/tei:abstract/tei:div/tei:p', ns)
@@ -224,9 +221,9 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
     
     if debug:
         if metadata['abstract']:
-            print(f"✅ Abstract extracted: {len(metadata['abstract'])} chars")
+            print(f" Abstract extracted: {len(metadata['abstract'])} chars")
         else:
-            print("⚠️ No abstract found")
+            print(" No abstract found")
     
     # Extract keywords
     keywords = root.findall('.//tei:keywords/tei:term', ns)
@@ -238,7 +235,7 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
         metadata['keywords'] = [kw.text.strip() for kw in keywords if kw.text]
     
     if debug:
-        print(f"✅ Keywords extracted: {len(metadata['keywords'])}")
+        print(f"Keywords extracted: {len(metadata['keywords'])}")
     
     # Extract affiliations
     affiliations = root.findall('.//tei:affiliation', ns)
@@ -256,7 +253,7 @@ def extract_metadata_from_tei(tei_xml: str, debug: bool = False) -> Dict:
     metadata['affiliations'] = list(set(metadata['affiliations']))
     
     if debug:
-        print(f"✅ Affiliations extracted: {len(metadata['affiliations'])}")
+        print(f"Affiliations extracted: {len(metadata['affiliations'])}")
     
     # Extract publication date
     date_elem = root.find('.//tei:publicationStmt/tei:date', ns)
@@ -293,7 +290,7 @@ def debug_tei_structure(tei_xml: str, output_file: str = None):
         print("\n=== TEI XML Structure Debug ===")
         
         # Find all title elements
-        print("\n📄 All <title> elements found:")
+        print("\n All <title> elements found:")
         all_titles = root.findall('.//tei:title', ns)
         for i, title in enumerate(all_titles, 1):
             title_type = title.get('type', 'no-type')
@@ -304,7 +301,7 @@ def debug_tei_structure(tei_xml: str, output_file: str = None):
             print(f"     Text: {title_text[:100]}...")
         
         # Find all author elements
-        print("\n👥 All <author> elements found:")
+        print("\n All <author> elements found:")
         all_authors = root.findall('.//tei:author', ns)
         print(f"  Total: {len(all_authors)}")
         
@@ -317,7 +314,7 @@ def debug_tei_structure(tei_xml: str, output_file: str = None):
         for path in abstract_paths:
             elem = root.find(path, ns)
             if elem is not None:
-                print(f"  ✅ Found at: {path}")
+                print(f"   Found at: {path}")
         
         print("=" * 35)
         
@@ -325,7 +322,7 @@ def debug_tei_structure(tei_xml: str, output_file: str = None):
         if output_file:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(tei_xml)
-            print(f"\n💾 TEI XML saved to: {output_file}")
+            print(f"\n TEI XML saved to: {output_file}")
         
     except Exception as e:
-        print(f"❌ Debug failed: {e}")
+        print(f" Debug failed: {e}")
