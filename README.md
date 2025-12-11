@@ -5,13 +5,12 @@
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![GROBID](https://img.shields.io/badge/GROBID-0.8.0-green)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-red)
-![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
 ## Overview
 
-This tool automatically extracts valuable information from PDF documents, with particular focus on academic research papers. It leverages GROBID (GeneRation Of BIbliographic Data), a machine learning library trained on millions of scientific documents, to intelligently parse and structure document content.
+This tool automatically extracts valuable information from PDF documents, with particular focus on academic research papers. It leverages GROBID , a machine learning library trained on millions of scientific documents, to intelligently parse and structure document content.
 
 ### Key Features
 
@@ -20,10 +19,7 @@ The extractor identifies and extracts:
 - **Title** - Document title and heading structure
 - **Authors** - Complete list of authors with proper name parsing
 - **Email Addresses** - Contact information embedded in the document
-- **Abstract** - Paper summary and overview
-- **Keywords** - Key terms and topic identifiers
 - **Publication Date** - Publishing information
-- **Body Text** - Full text content with structural preservation
 
 ### Use Cases
 
@@ -475,12 +471,6 @@ Contributions to improve the project are welcome. Please follow these guidelines
 6. Push to your fork: `git push origin feature/your-feature-name`
 7. Submit a pull request with detailed description
 
-### Code Style
-
-- Follow PEP 8 guidelines for Python code
-- Use meaningful variable and function names
-- Include docstrings for all functions and classes
-- Add comments for complex logic
 
 ### Testing
 
@@ -507,34 +497,7 @@ This project builds upon the work of:
 
 ---
 
-## Support and Contact
 
-For issues, questions, or suggestions:
+**Developed and maintained by SDC - Hardik Gupta**
 
-1. Check the Troubleshooting section above
-2. Review [GROBID documentation](https://grobid.readthedocs.io/)
-3. Open an issue on GitHub with:
-   - Detailed problem description
-   - Steps to reproduce
-   - Error messages and logs
-   - System information (OS, Python version)
 
----
-
-## Future Development
-
-Planned enhancements include:
-
-- Batch processing web interface
-- Support for additional document formats (DOCX, HTML)
-- Citation network extraction and visualization
-- Multi-language document support
-- RESTful API endpoint
-- Docker Compose configuration for simplified deployment
-- Database integration for large-scale cataloging
-
----
-
-**Developed and maintained by [Hardik Gupta]**
-
-For more information, visit the project repository or contact the maintainer.
